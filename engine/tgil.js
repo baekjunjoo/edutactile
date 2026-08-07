@@ -282,7 +282,17 @@
       });
       return lines;
     }
-    if (spec.title && spec.title.text) { wrap(spec.title.text).forEach(function (l) { pushLine(l, true); }); y += 4; }
+    var titleBox = null;
+    if (spec.title && spec.title.text) {
+      var ty0 = y, tw = 0;
+      wrap(spec.title.text).forEach(function (l) {
+        var lw = labelSize(translate(l, spec.brailleCode)).w;
+        if (lw > tw) tw = lw;
+        pushLine(l, true);
+      });
+      titleBox = { cx: inner.x + inner.w / 2, y0: ty0, w: tw, h: Math.max(y - ty0, BRL_H) };   // 편집 UI용
+      y += 4;
+    }
     var overflow = false;
     wrap(spec.textPage).forEach(function (l) {
       if (l === '') { y += lineStep / 2; return; }
@@ -291,7 +301,7 @@
     if (overflow) report.push('본문이 한 페이지를 넘칩니다 — 내용을 줄이거나 페이지를 나눠 주세요.');
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + page.w + 'mm" height="' + page.h + 'mm" viewBox="0 0 ' + page.w + ' ' + page.h + '">' +
       '<rect width="100%" height="100%" fill="#fff"/>' + body.join('\n') + '</svg>';
-    return { svg: svg, report: report, layout: { page: page, bb: null } };
+    return { svg: svg, report: report, layout: { page: page, bb: null, titleBox: titleBox } };
   }
 
   /* ── 렌더: spec → { svg, report } ── */

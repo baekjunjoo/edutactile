@@ -200,12 +200,13 @@
 
   /* 클릭/드래그 좌표 → world */
   function worldFromEvent(ev) {
-    var svg = $('#preview svg'); if (!svg || !state.layout || !state.layout.XI) return null;  // 텍스트 페이지 등
+    var svg = $('#preview svg'); if (!svg || !state.layout) return null;
     var r = svg.getBoundingClientRect();
     var pg = state.layout.page || TGIL.PROFILE.page;
     var mmX = (ev.clientX - r.left) / r.width * pg.w;
     var mmY = (ev.clientY - r.top) / r.height * pg.h;
-    return { w: [state.layout.XI(mmX), state.layout.YI(mmY)], mm: [mmX, mmY] };
+    // w(도면 좌표)는 좌표계가 있는 도면에서만 — 텍스트 페이지는 mm만 유효
+    return { w: state.layout.XI ? [state.layout.XI(mmX), state.layout.YI(mmY)] : null, mm: [mmX, mmY] };
   }
   /* 치수 근접 탐색: 레이블 박스 or 치수선 3mm 이내 */
   function findDimNear(mm) {
@@ -225,6 +226,7 @@
   /* 레이블 타깃 도트 근접 탐색 (페이지 mm 기준 반경) */
   function findLabelNear(mm, radius) {
     radius = radius || 5;
+    if (!state.layout || !state.layout.X) return -1;
     var best = -1, bestD = radius;
     state.labels.forEach(function (l, i) {
       var dx = state.layout.X(l.at[0]) - mm[0], dy = state.layout.Y(l.at[1]) - mm[1];
@@ -237,6 +239,7 @@
   function onPreviewClick(ev) {
     if (state.didDrag) { state.didDrag = false; return; }  // 드래그 직후 클릭 무시
     var pt = worldFromEvent(ev); if (!pt) return;
+    if ((state.dimMode || state.labelMode) && !pt.w) return;   // 좌표계 없는 페이지(텍스트 페이지)엔 배치 불가
     if (state.dimMode) {
       if (!state.pendingDimPt) {           // 1/2: 시작점
         state.pendingDimPt = pt.w; setModeChrome(); return;
@@ -315,13 +318,13 @@
   var rafPending = false;
   function onDragStart(ev) {
     if (state.labelMode || state.dimMode) return;
-    var pt = worldFromEvent(ev); if (!pt) return;
+    var pt = worldFromEvent(ev); if (!pt || !pt.w) return;
     var i = findLabelNear(pt.mm);
     if (i >= 0) { state.dragging = i; ev.preventDefault(); }
   }
   function onDragMove(ev) {
     if (state.dragging == null) return;
-    var pt = worldFromEvent(ev); if (!pt) return;
+    var pt = worldFromEvent(ev); if (!pt || !pt.w) return;
     state.labels[state.dragging].at = pt.w;
     state.didDrag = true;
     if (!rafPending) {
@@ -390,7 +393,12 @@
       update();
       return true;
     }
-    if (k === 'title') { state.titleOverride = txt; update(); return true; }
+    if (k === 'title') {
+      var tk = tplTitleParam(), ti = titleInput();
+      if (tk && ti) { ti.value = txt; update(); }      // 템플릿 자체 제목 파라미터에 반영
+      else { state.titleOverride = txt; update(); }
+      return true;
+    }
     if (k === 'leaderedit' && state.pendingLeaderEl) {
       var el = state.pendingLeaderEl;
       if (el._userLabelIdx != null && state.labels[el._userLabelIdx]) state.labels[el._userLabelIdx].text = txt;
@@ -608,14 +616,34 @@
     });
   }
 
+  /* 템플릿 자체 제목 파라미터 (예: 텍스트 페이지의 heading) */
+  function tplTitleParam() {
+    if (!state.tpl || !state.tpl.params) return null;
+    for (var i = 0; i < state.tpl.params.length; i++) {
+      var k = state.tpl.params[i].key;
+      if (k === 'heading' || k === 'title') return k;
+    }
+    return null;
+  }
+  function titleInput() {
+    var k = tplTitleParam();
+    return k ? $('#form [data-key="' + k + '"]') : $('#titleOvr');
+  }
+  var _formT = null;
+  function scheduleUpdate() { clearTimeout(_formT); _formT = setTimeout(update, 180); }
+
   function renderForm() {
     var f = $('#form'); f.innerHTML = '';
     if (!state.tpl) return;
-    if (state.tpl !== RULEBOOK_TPL && state.tpl !== TRACE_TPL) {   // 제목 수정 (미리보기 제목 클릭으로도 가능)
+    // 제목 수정 (미리보기 제목 클릭으로도 가능). 템플릿이 자체 제목 파라미터를 가지면 중복 생성하지 않는다.
+    if (state.tpl !== RULEBOOK_TPL && state.tpl !== TRACE_TPL && !tplTitleParam()) {
       var tRow = document.createElement('label'); tRow.className = 'frow';
       var tLab = document.createElement('span'); tLab.textContent = t('title'); tRow.appendChild(tLab);
       var tInp = document.createElement('input'); tInp.type = 'text'; tInp.id = 'titleOvr';
-      tInp.addEventListener('change', function () { state.titleOverride = tInp.value.trim() || null; update(); });
+      tInp.addEventListener('input', function () {
+        state.titleOverride = tInp.value.trim() || null;
+        scheduleUpdate();
+      });
       tRow.appendChild(tInp); f.appendChild(tRow);
     }
     if (state.tpl === RULEBOOK_TPL) {   // 문서 변환기: PDF/Word/JSON 업로드 + 내장 샘플
@@ -672,7 +700,10 @@
         inp = document.createElement('input'); inp.type = p.type === 'number' ? 'number' : 'text'; inp.value = p.default;
       }
       inp.dataset.key = p.key;
-      inp.addEventListener('change', update);
+      // 글자 입력은 타이핑하는 동안 바로 반영(input). blur의 change로 다시 그리면
+      // 그 순간의 클릭이 삼켜지므로(미리보기 DOM 교체) 글자 입력엔 change를 걸지 않는다.
+      if (p.type === 'text' || p.type === 'textarea' || p.type === 'number') inp.addEventListener('input', scheduleUpdate);
+      else inp.addEventListener('change', update);
       row.appendChild(inp); f.appendChild(row);
     });
     if (state.tpl.sequence) {   // 시퀀스 생성 템플릿: 버튼으로 페이지 일괄 생성
@@ -897,7 +928,7 @@
       spec.canvas = Object.assign({}, spec.canvas, { paper: state.paper });   // 용지
       spec.inkText = state.inkMode === 'off' ? null : state.inkMode;          // 묵자 병기
       if (state.titleOverride && spec.title) spec.title.text = state.titleOverride;   // 제목 덮어쓰기
-      var tOvr = $('#titleOvr');
+      var tOvr = $('#titleOvr');   // 템플릿 자체 제목 파라미터가 없을 때만 존재
       if (tOvr && spec.title && document.activeElement !== tOvr) tOvr.value = spec.title.text;
       // 치수 레이블 덮어쓰기(미터법 등) + 삭제(숨김) 적용 — 원본 인덱스 기준
       var di = 0;

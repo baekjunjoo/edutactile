@@ -7,6 +7,18 @@ let pass = 0, fail = 0;
 const ok = (n, c, x) => { if (c) { pass++; console.log('  ✔', n); } else { fail++; console.log('  ✘', n, x !== undefined ? '→ ' + x : ''); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+/* 현재 제목 글자의 화면 좌표 (묵자 병기 텍스트 기준) */
+async function titlePos(page) {
+  return page.evaluate(() => {
+    const spec = JSON.parse(document.querySelector('#json').value);
+    const title = spec.title && spec.title.text;
+    const els = [...document.querySelectorAll('#preview svg .inktxt')];
+    const el = els.find(t => t.textContent === title) || els[0];
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+}
+
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
@@ -93,11 +105,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok('inline edit updates diagram + panel row', edited.svg && edited.row === '24', JSON.stringify(edited));
 
   // ── 4. 제목 수정: 미리보기 클릭 + 옵션 패널 필드 ──
-  const tPos = await page.evaluate(() => {
-    const svg = document.querySelector('#preview svg');
-    const r = svg.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height * 0.055 };
-  });
+  const tPos = await titlePos(page);
   await page.mouse.click(tPos.x, tPos.y);
   await sleep(200);
   const tf = await page.evaluate(() => {
@@ -176,6 +184,35 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     boxHidden: document.querySelector('#labelBox').style.display === 'none'
   }));
   ok('clicking away commits the in-place edit', blurCommit.svg && blurCommit.boxHidden, JSON.stringify(blurCommit));
+
+  // ── 8. 텍스트 페이지: 제목 중복 없음 · 타이핑 즉시 반영 · 본문 점자+묵자 ──
+  await page.click('#gallery .gcat:has-text("Language Arts")');
+  await page.click('#gallery .card:has-text("Braille Text Page")');
+  await page.waitForSelector('#form textarea');
+  const tpForm = await page.evaluate(() => [...document.querySelectorAll('#form .frow span')].map(s => s.textContent));
+  ok('text page: single Heading field (no duplicate)', tpForm.filter(x => /Heading|제목/.test(x)).length === 1, JSON.stringify(tpForm));
+  await page.focus('#form textarea');
+  await page.type('#form textarea', 'lesson goal');
+  await sleep(500);
+  const tp = await page.evaluate(() => {
+    const html = document.querySelector('#preview').innerHTML;
+    const inks = [...html.matchAll(/class="inktxt"[^>]*>([^<]*)</g)].map(m => m[1]);
+    return { live: inks.includes('lesson goal'), brailleGroups: (html.match(/<g fill="#000">/g) || []).length, inks };
+  });
+  ok('body updates while typing (no blur needed)', tp.live, JSON.stringify(tp.inks));
+  ok('body renders braille + gray ink text', tp.brailleGroups >= 2 && tp.inks.length >= 2, JSON.stringify(tp));
+  // 제목 제자리 수정 → 템플릿 heading 파라미터에 반영
+  const tp2 = await titlePos(page);
+  await page.mouse.click(tp2.x, tp2.y);
+  await sleep(200);
+  await page.fill('#labelInput', '학습 목표');
+  await page.press('#labelInput', 'Enter');
+  await sleep(400);
+  const tp3 = await page.evaluate(() => ({
+    heading: document.querySelector('#form [data-key="heading"]').value,
+    svg: document.querySelector('#preview').innerHTML.includes('학습 목표')
+  }));
+  ok('in-place title edit writes into template Heading param', tp3.heading === '학습 목표' && tp3.svg, JSON.stringify(tp3));
 
   await browser.close();
   console.log(`\n결과: ${pass} 통과 / ${fail} 실패`);
