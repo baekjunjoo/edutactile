@@ -78,9 +78,22 @@
       BLE.sdkMod = mod;
       return mod;
     },
+    importSrc: function (parts) {   // 소스(문자열/바이트) → Blob URL → ESM import
+      var url = URL.createObjectURL(new Blob([parts], { type: 'text/javascript' }));
+      return import(url).then(
+        function (m) { URL.revokeObjectURL(url); return BLE.adoptModule(m); },
+        function (e) { URL.revokeObjectURL(url); throw e; }
+      );
+    },
     loadSDK: function () {
       if (BLE.sdkMod) return Promise.resolve(BLE.sdkMod);
       try { return Promise.resolve(BLE.adoptModule(null)); } catch (e0) {}
+      var g = (typeof window !== 'undefined') ? window : {};
+      if (g.DOTPAD_SDK_SRC) {         // 내장 SDK (base64) — file://·https 어디서든 즉시 로드
+        var bin = atob(g.DOTPAD_SDK_SRC), bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return BLE.importSrc(bytes).catch(function () { return BLE.pickSdkFile(); });
+      }
       var paths = ['./DotPadSDK-3.0.0.js', './DotPadSDK-3_0_0.js', './dotpadsdk.js'];
       var p = Promise.reject(new Error('no sdk'));
       paths.forEach(function (path) {
@@ -101,12 +114,7 @@
           fr.onerror = function () { reject(new Error('no sdk')); };
           fr.onload = function () {
             var src = String(fr.result);
-            var url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
-            import(url).then(function (m) {               // ESM
-              URL.revokeObjectURL(url);
-              resolve(BLE.adoptModule(m));
-            }).catch(function () {                        // UMD/classic — 전역 등록형
-              URL.revokeObjectURL(url);
+            BLE.importSrc(src).then(resolve, function () {  // ESM 실패 → UMD/classic 폴백
               try {
                 (new Function(src)).call(window);
                 resolve(BLE.adoptModule(null));

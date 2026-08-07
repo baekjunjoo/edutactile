@@ -49,10 +49,10 @@
       labelMode: 'Add label (click diagram)', labelModeOn: 'Click a spot on the diagram…',
       dimMode: 'Add measurement (click 2 points)', dimModeOn: 'Click point 1 of 2…', dimModeOn2: 'Click point 2 of 2…',
       labels: 'Labels (lead lines)', lempty: 'None yet — use "Add label".',
-      editHint: 'Click a dimension or label on the diagram to edit it in the right panel · drag label dot = move · double-click = delete',
+      editHint: 'Click the title or a dimension on the diagram to edit it right there · label dot: drag = move, click = panel · double-click = delete',
       paper: 'Paper size', ink: 'Print text (묵자) alongside braille',
       inkScreen: 'Screen only (for checking)', inkPrint: 'Include in print/export', inkOff: 'Off',
-      dims: 'Dimension labels (editable)',
+      dims: 'Dimension labels (editable)', dimUnit: 'Unit (applies to all)',
       seq: 'Lesson sequence', seqEmpty: 'No pages yet — build a diagram, then "Add as page".',
       addPage: '+ Add as page', savePage: '✓ Save to page', genSeq: 'Generate sequence',
       open: 'Open', dup: 'Copy', descPh: 'Page description (spoken on DotPad)',
@@ -83,10 +83,10 @@
       labelMode: '레이블 추가 (도면 클릭)', labelModeOn: '도면에서 위치를 클릭하세요…',
       dimMode: '치수 추가 (두 점 클릭)', dimModeOn: '측정 시작점을 클릭하세요 (1/2)…', dimModeOn2: '측정 끝점을 클릭하세요 (2/2)…',
       labels: '레이블 (리드선)', lempty: '아직 없음 — "레이블 추가"를 누르세요.',
-      editHint: '도면에서 치수·레이블을 클릭하면 오른쪽 패널에서 수정 · 레이블 도트 드래그 = 이동 · 더블클릭 = 삭제',
+      editHint: '도면에서 제목·치수를 클릭하면 그 자리에서 수정 · 레이블 도트: 드래그 = 이동, 클릭 = 패널 · 더블클릭 = 삭제',
       paper: '용지 크기', ink: '묵자 병기 (점자 옆 일반 글자)',
       inkScreen: '화면에만 (검증용)', inkPrint: '인쇄물에도 포함', inkOff: '끄기',
-      dims: '치수 레이블 (수정 가능)',
+      dims: '치수 레이블 (수정 가능)', dimUnit: '단위 (전체 일괄 적용)',
       seq: '레슨 시퀀스', seqEmpty: '아직 페이지 없음 — 도면을 만들고 "페이지로 추가"를 누르세요.',
       addPage: '+ 페이지로 추가', savePage: '✓ 이 페이지에 저장', genSeq: '시퀀스 생성',
       open: '열기', dup: '복제', descPh: '페이지 설명 (DotPad에서 음성으로 읽힘)',
@@ -137,6 +137,7 @@
           }
           state.loadedSpec = data;
           state.tpl = null; state.labels = []; state.dimOverrides = {};
+          state.titleOverride = null; state.dimUnit = null;
           $('#form').innerHTML = '<div class="hint">' + t('loaded') + '</div>';
           renderGallery(); renderLabelList(); update();
         } catch (e) { alert('JSON error: ' + e.message); }
@@ -168,6 +169,13 @@
         } else if (state.pendingKind === 'dim' && state.pendingDimPt && state.pending && txt) {
           state.userDims.push({ from: state.pendingDimPt, to: state.pending, label: applyUnit(txt) });
           state.pendingDimPt = null; setMode('dim', false); update();
+        } else if (state.pendingKind === 'dimedit' && state.pendingDimEl && txt) {
+          commitDim(state.pendingDimEl, applyUnit(txt), true);
+          $('#dimForm').innerHTML = '';   // 행 재구성 (수치·단위 표기 갱신)
+          update();
+        } else if (state.pendingKind === 'title' && txt) {
+          state.titleOverride = txt;
+          update();
         }
         hideLabelInput();
       } else if (ev.key === 'Escape') { state.pendingDimPt = null; hideLabelInput(); setModeChrome(); }
@@ -242,11 +250,28 @@
       showLabelInput(ev, '');
       return;
     }
-    // 모드 없음: 치수/레이블 클릭 → 오른쪽 패널의 해당 행으로 포커스 (패널에서 직접 수정)
+    // 모드 없음: 치수 클릭 → 그 자리에서 수정 (+패널 행 하이라이트) · 레이블 클릭 → 패널 행 · 제목 클릭 → 그 자리 수정
     var dimEl = findDimNear(pt.mm);
-    if (dimEl) { focusDimRow(dimEl); return; }
+    if (dimEl) {
+      state.pendingDimEl = dimEl; state.pendingKind = 'dimedit';
+      var p = parseDimLabel(dimEl.label);
+      showLabelInput(ev, p ? String(p.val) : dimEl.label, p ? (p.unit || '') : null);
+      focusDimRowSoft(dimEl);
+      return;
+    }
     var li = findLabelNear(pt.mm);
-    if (li >= 0) focusLabelRow(li);
+    if (li >= 0) { focusLabelRow(li); return; }
+    if (findTitleHit(pt.mm)) {
+      state.pendingKind = 'title';
+      showLabelInput(ev, state.spec.title.text);
+    }
+  }
+  /* 제목 영역 히트 테스트 (미리보기 상단 점자+묵자 제목) */
+  function findTitleHit(mm) {
+    var L = state.layout;
+    if (!L || !L.titleLines || !L.titleLines.length || !state.spec || !state.spec.title) return false;
+    var h = L.titleLines.length * TGIL.PROFILE.braille.lineAdv;
+    return mm[1] >= L.titleY - 2 && mm[1] <= L.titleY + h + 5;
   }
 
   function onPreviewDblClick(ev) {   // 더블클릭: 레이블 삭제 → 치수 삭제 순으로 탐색
@@ -287,13 +312,15 @@
     if (moved) update();  // 이동 없으면 재렌더 생략 (더블클릭 이벤트 보존)
   }
 
-  function showLabelInput(ev, preset) {
+  function showLabelInput(ev, preset, unitK) {
     var box = $('#labelBox'), inp = $('#labelInput');
     box.style.display = 'flex';
     box.style.left = Math.min(ev.clientX + 8, window.innerWidth - 240) + 'px';
     box.style.top = (ev.clientY - 16) + 'px';
-    // 치수 입력일 때만 단위 선택 노출 (mm/cm/m)
-    $('#unitSel').style.display = (state.pendingKind === 'dim') ? 'inline-block' : 'none';
+    // 치수 생성/수정일 때만 단위 선택 노출
+    var isDim = state.pendingKind === 'dim' || state.pendingKind === 'dimedit';
+    $('#unitSel').style.display = isDim ? 'inline-block' : 'none';
+    if (isDim) $('#unitSel').value = unitK != null ? unitK : (state.dimUnit || $('#unitSel').value);
     inp.value = preset || ''; inp.focus(); inp.select();
   }
   function hideLabelInput() { $('#labelBox').style.display = 'none'; state.pending = null; state.pendingKind = null; state.pendingDimEl = null; }
@@ -433,6 +460,7 @@
     state.galleryOpen[tpl.category.split('/')[0]] = true;   // 선택한 템플릿의 카테고리는 펼침 유지
     state.tpl = tpl; state.loadedSpec = null; state.editingPage = null;   // 시퀀스(pages)는 유지 — 여러 템플릿을 섞어 레슨 구성
     state.labels = []; state.dimOverrides = {}; state.userDims = []; state.pendingDimPt = null; state.dimHidden = {};
+    state.titleOverride = null; state.dimUnit = null;
     renderLabelList(); renderSeqList();
     renderGallery(); renderForm(); update();
   }
@@ -460,6 +488,7 @@
     state.editingPage = i;
     if (!keepTpl) { state.tpl = null; $('#form').innerHTML = '<div class="hint">' + t('loaded') + '</div>'; renderGallery(); }
     state.labels = []; state.userDims = []; state.dimOverrides = {}; state.dimHidden = {};
+    state.titleOverride = null; state.dimUnit = null;
     renderLabelList();
     update(); renderSeqList(); setSeqChrome();
   }
@@ -506,6 +535,13 @@
   function renderForm() {
     var f = $('#form'); f.innerHTML = '';
     if (!state.tpl) return;
+    if (state.tpl !== RULEBOOK_TPL && state.tpl !== TRACE_TPL) {   // 제목 수정 (미리보기 제목 클릭으로도 가능)
+      var tRow = document.createElement('label'); tRow.className = 'frow';
+      var tLab = document.createElement('span'); tLab.textContent = t('title'); tRow.appendChild(tLab);
+      var tInp = document.createElement('input'); tInp.type = 'text'; tInp.id = 'titleOvr';
+      tInp.addEventListener('change', function () { state.titleOverride = tInp.value.trim() || null; update(); });
+      tRow.appendChild(tInp); f.appendChild(tRow);
+    }
     if (state.tpl === RULEBOOK_TPL) {   // 문서 변환기: PDF/Word/JSON 업로드 + 내장 샘플
       var ru = document.createElement('label'); ru.className = 'frow';
       var rs = document.createElement('span'); rs.textContent = t('rbUpload'); ru.appendChild(rs);
@@ -784,6 +820,9 @@
       spec.brailleCode = state.brailleLang === 'nemeth' ? 'nemeth' : (state.brailleLang === 'ko' ? 'ko' : 'ueb');
       spec.canvas = Object.assign({}, spec.canvas, { paper: state.paper });   // 용지
       spec.inkText = state.inkMode === 'off' ? null : state.inkMode;          // 묵자 병기
+      if (state.titleOverride && spec.title) spec.title.text = state.titleOverride;   // 제목 덮어쓰기
+      var tOvr = $('#titleOvr');
+      if (tOvr && spec.title && document.activeElement !== tOvr) tOvr.value = spec.title.text;
       // 치수 레이블 덮어쓰기(미터법 등) + 삭제(숨김) 적용 — 원본 인덱스 기준
       var di = 0;
       spec.elements = spec.elements.filter(function (e) {
@@ -824,54 +863,70 @@
     } catch (e) { $('#report').textContent = 'Error: ' + e.message; }
   }
 
-  /* 치수 레이블 편집 폼: 수치 + 단위 선택(변경 시 자동 환산) — 패널에서 직접 수정 */
+  /* 치수 커밋 (userDims/템플릿 오버라이드 공통) */
+  function commitDim(d, label, skipUpdate) {
+    if (d._userIdx != null) { if (state.userDims[d._userIdx]) state.userDims[d._userIdx].label = label; }
+    else state.dimOverrides[d._dimIdx] = label;
+    if (!skipUpdate) update();
+  }
+  function dimUnitGuess(dims) {
+    for (var i = 0; i < dims.length; i++) { var p = parseDimLabel(dims[i].label); if (p && p.unit) return p.unit; }
+    return '';
+  }
+  /* 치수 레이블 편집 폼: 단위는 문서 전체 일괄 선택(자동 환산), 수치는 행별 수정 */
   function renderDimForm() {
     var dims = state.spec.elements.filter(function (e) { return e.type === 'dimension'; });
     var head = $('#h-dims'), box = $('#dimForm');
     head.style.display = dims.length ? '' : 'none';
-    if (box.childElementCount === dims.length) {  // 개수 같으면 값만 유지 (포커스 보존)
+    if (!dims.length) { box.innerHTML = ''; return; }
+    if (box.childElementCount === dims.length + 1) {  // 개수 같으면 값만 유지 (포커스 보존)
       return;
     }
     box.innerHTML = '';
+    // 단위 일괄 선택 — 치수마다 단위가 다를 일은 없으므로 한 번에 전체 변환
+    var uRow = document.createElement('label'); uRow.className = 'frow';
+    var uLab = document.createElement('span'); uLab.textContent = t('dimUnit'); uRow.appendChild(uLab);
+    var uSel = document.createElement('select');
+    var op0 = document.createElement('option'); op0.value = ''; op0.textContent = '—'; uSel.appendChild(op0);
+    UNITS.forEach(function (u) {
+      var op = document.createElement('option'); op.value = u.k;
+      op.textContent = state.uiLang === 'ko' ? u.ko : u.en;
+      uSel.appendChild(op);
+    });
+    uSel.value = state.dimUnit != null ? state.dimUnit : dimUnitGuess(dims);
+    uSel.addEventListener('change', function () {
+      state.dimUnit = uSel.value;
+      var newU = uSel.value || null;
+      dims.forEach(function (d) {
+        var p = parseDimLabel(d.label);
+        if (!p) return;                                  // 자유 문구는 건드리지 않음
+        var v = p.val;
+        if (p.unit && newU && p.unit !== newU) v = Math.round(v * unitOf(p.unit).f / unitOf(newU).f * 100) / 100;
+        commitDim(d, fmtDim(v, newU), true);
+      });
+      box.innerHTML = '';                                // 행 재구성 (단위 표기 갱신)
+      update();
+    });
+    uRow.appendChild(uSel); box.appendChild(uRow);
     dims.forEach(function (d, i) {
       var row = document.createElement('label'); row.className = 'frow';
       var s = document.createElement('span'); s.textContent = (i + 1) + '.'; row.appendChild(s);
-      function commit(label) {
-        if (d._userIdx != null) { if (state.userDims[d._userIdx]) { state.userDims[d._userIdx].label = label; update(); } }
-        else { state.dimOverrides[d._dimIdx] = label; update(); }
-      }
       var parsed = parseDimLabel(d.label);
       var inp = document.createElement('input');
-      if (parsed) {                       // 수치 + 단위 드롭다운
+      if (parsed) {                       // 수치 + 단위 표기 (단위 변경은 위의 일괄 선택으로)
         inp.type = 'number'; inp.step = 'any'; inp.value = parsed.val;
-        inp.style.width = '76px';
-        var sel = document.createElement('select');
-        var op0 = document.createElement('option'); op0.value = ''; op0.textContent = '—'; sel.appendChild(op0);
-        UNITS.forEach(function (u) {
-          var op = document.createElement('option'); op.value = u.k;
-          op.textContent = state.uiLang === 'ko' ? u.ko : u.en;
-          sel.appendChild(op);
-        });
-        sel.value = parsed.unit || '';
+        inp.style.width = '84px';
+        var uTxt = document.createElement('span');
+        uTxt.style.cssText = 'color:#8a8378;font-size:12px;flex:1';
+        uTxt.textContent = parsed.unit ? (state.uiLang === 'ko' ? unitOf(parsed.unit).ko : unitOf(parsed.unit).en) : '';
         inp.addEventListener('change', function () {
           var v = parseFloat(inp.value); if (isNaN(v)) return;
-          commit(fmtDim(v, sel.value || null));
+          commitDim(d, fmtDim(v, parsed.unit));
         });
-        sel.addEventListener('change', function () {
-          var v = parseFloat(inp.value); if (isNaN(v)) return;
-          var oldU = parsed.unit, newU = sel.value || null;
-          if (oldU && newU && oldU !== newU) {          // 단위 환산 (물리 길이 유지)
-            v = v * unitOf(oldU).f / unitOf(newU).f;
-            v = Math.round(v * 100) / 100;
-            inp.value = v;
-          }
-          parsed.unit = newU;
-          commit(fmtDim(v, newU));
-        });
-        row.appendChild(inp); row.appendChild(sel);
+        row.appendChild(inp); row.appendChild(uTxt);
       } else {                            // 자유 문구
         inp.type = 'text'; inp.value = d.label; inp.style.width = '150px';
-        inp.addEventListener('change', function () { commit(inp.value); });
+        inp.addEventListener('change', function () { commitDim(d, inp.value); });
         row.appendChild(inp);
       }
       var del = document.createElement('button'); del.textContent = '✕';
@@ -895,9 +950,13 @@
     row.style.boxShadow = '0 0 0 2px rgba(200,38,92,.5)';
     setTimeout(function () { row.style.boxShadow = ''; }, 1200);
   }
-  function focusDimRow(el) {
+  function focusDimRowSoft(el) {   // 하이라이트만 (포커스는 플로팅 입력이 가져간다)
     var dims = state.spec.elements.filter(function (e) { return e.type === 'dimension'; });
-    flashRow($('#dimForm').children[dims.indexOf(el)]);
+    var row = $('#dimForm').children[dims.indexOf(el) + 1];   // +1 = 단위 일괄 행
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest' });
+    row.style.boxShadow = '0 0 0 2px rgba(200,38,92,.5)';
+    setTimeout(function () { row.style.boxShadow = ''; }, 1200);
   }
   function focusLabelRow(i) { flashRow($('#labelList').children[i]); }
 

@@ -19,6 +19,12 @@ html = html
   .replace('/*__RULEBOOK__*/', () => read('rulebook/rulebook.js'))
   .replace('/*__DOCX__*/', () => read('rulebook/docx.js'))
   .replace('/*__EBRL__*/', () => read('rulebook/ebrl.js'))
+  .replace('/*__DOTPADSDK__*/', () => {
+    // 공식 DotPadSDK 내장 (Dot Inc. 자사 SDK) — 있으면 base64로 심어 파일 선택 없이 즉시 연결
+    const p = __dirname + '/app/DotPadSDK-3.0.0.js';
+    if (!fs.existsSync(p)) { console.warn('⚠ DotPadSDK not found — connect will ask for the file'); return ''; }
+    return 'window.DOTPAD_SDK_SRC=' + JSON.stringify(fs.readFileSync(p).toString('base64')) + ';';
+  })
   .replace('/*__DOTPAD__*/', () => read('app/dotpad.js'))
   .replace('/*__PARSER__*/', () => read('rulebook/parser.js'))
   .replace('/*__ZIPREAD__*/', () => read('rulebook/zipread.js'))
