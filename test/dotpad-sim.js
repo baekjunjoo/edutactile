@@ -24,6 +24,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await page.waitForSelector('#gallery .card');
 
   // ── 문서 변환기 + 내장 샘플 로드 (결정적 프레임 소스) ──
+  await page.click('#gallery .gcat:has-text("Documents")');   // 아코디언 펼침
   await page.click('#gallery .card:has-text("Braille Document Converter")');
   await page.click('#form .genBtn');
   await page.waitForSelector('#rbFrame');

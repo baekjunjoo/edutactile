@@ -49,7 +49,7 @@
       labelMode: 'Add label (click diagram)', labelModeOn: 'Click a spot on the diagram…',
       dimMode: 'Add measurement (click 2 points)', dimModeOn: 'Click point 1 of 2…', dimModeOn2: 'Click point 2 of 2…',
       labels: 'Labels (lead lines)', lempty: 'None yet — use "Add label".',
-      editHint: 'Label dot: drag = move, double-click = delete · Dimension: click = edit text, double-click = delete',
+      editHint: 'Click a dimension or label on the diagram to edit it in the right panel · drag label dot = move · double-click = delete',
       paper: 'Paper size', ink: 'Print text (묵자) alongside braille',
       inkScreen: 'Screen only (for checking)', inkPrint: 'Include in print/export', inkOff: 'Off',
       dims: 'Dimension labels (editable)',
@@ -83,7 +83,7 @@
       labelMode: '레이블 추가 (도면 클릭)', labelModeOn: '도면에서 위치를 클릭하세요…',
       dimMode: '치수 추가 (두 점 클릭)', dimModeOn: '측정 시작점을 클릭하세요 (1/2)…', dimModeOn2: '측정 끝점을 클릭하세요 (2/2)…',
       labels: '레이블 (리드선)', lempty: '아직 없음 — "레이블 추가"를 누르세요.',
-      editHint: '레이블 도트: 드래그 = 이동, 더블클릭 = 삭제 · 치수: 클릭 = 문구 수정, 더블클릭 = 삭제',
+      editHint: '도면에서 치수·레이블을 클릭하면 오른쪽 패널에서 수정 · 레이블 도트 드래그 = 이동 · 더블클릭 = 삭제',
       paper: '용지 크기', ink: '묵자 병기 (점자 옆 일반 글자)',
       inkScreen: '화면에만 (검증용)', inkPrint: '인쇄물에도 포함', inkOff: '끄기',
       dims: '치수 레이블 (수정 가능)',
@@ -168,11 +168,6 @@
         } else if (state.pendingKind === 'dim' && state.pendingDimPt && state.pending && txt) {
           state.userDims.push({ from: state.pendingDimPt, to: state.pending, label: applyUnit(txt) });
           state.pendingDimPt = null; setMode('dim', false); update();
-        } else if (state.pendingKind === 'dimedit' && state.pendingDimEl && txt) {
-          var el = state.pendingDimEl;
-          if (el._userIdx != null && state.userDims[el._userIdx]) state.userDims[el._userIdx].label = txt;
-          else if (el._dimIdx != null) state.dimOverrides[el._dimIdx] = txt;
-          update();
         }
         hideLabelInput();
       } else if (ev.key === 'Escape') { state.pendingDimPt = null; hideLabelInput(); setModeChrome(); }
@@ -247,12 +242,11 @@
       showLabelInput(ev, '');
       return;
     }
-    // 모드 없음: 치수 클릭 → 문구 인라인 수정
+    // 모드 없음: 치수/레이블 클릭 → 오른쪽 패널의 해당 행으로 포커스 (패널에서 직접 수정)
     var dimEl = findDimNear(pt.mm);
-    if (dimEl) {
-      state.pendingDimEl = dimEl; state.pendingKind = 'dimedit';
-      showLabelInput(ev, dimEl.label);
-    }
+    if (dimEl) { focusDimRow(dimEl); return; }
+    var li = findLabelNear(pt.mm);
+    if (li >= 0) focusLabelRow(li);
   }
 
   function onPreviewDblClick(ev) {   // 더블클릭: 레이블 삭제 → 치수 삭제 순으로 탐색
@@ -303,11 +297,48 @@
     inp.value = preset || ''; inp.focus(); inp.select();
   }
   function hideLabelInput() { $('#labelBox').style.display = 'none'; state.pending = null; state.pendingKind = null; state.pendingDimEl = null; }
-  /* 치수 문구 확정: 숫자로 끝나면 선택된 단위를 붙인다 */
+
+  /* ── 치수 단위 체계 (mm·cm·m·ft·in, 단위 변경 시 수치 자동 환산) ── */
+  var UNITS = [
+    { k: 'mm', f: 1,     en: 'mm',     ko: '밀리미터' },
+    { k: 'cm', f: 10,    en: 'cm',     ko: '센티미터' },
+    { k: 'm',  f: 1000,  en: 'meters', ko: '미터' },
+    { k: 'ft', f: 304.8, en: 'feet',   ko: '피트' },
+    { k: 'in', f: 25.4,  en: 'inches', ko: '인치' }
+  ];
+  var UNIT_WORDS = {
+    mm: ['mm', 'millimeter', 'millimeters', '밀리미터', '미리미터'],
+    cm: ['cm', 'centimeter', 'centimeters', '센티미터', '센치미터'],
+    m:  ['m', 'meter', 'meters', 'metre', 'metres', '미터'],
+    ft: ['ft', 'foot', 'feet', '피트'],
+    in: ['in', 'inch', 'inches', '인치']
+  };
+  function unitOf(k) { for (var i = 0; i < UNITS.length; i++) if (UNITS[i].k === k) return UNITS[i]; return null; }
+  /* "78 feet" / "78피트" / "0.914 m" / "12" → {val, unit|null} | null(자유 문구) */
+  function parseDimLabel(label) {
+    var m = String(label).trim().match(/^([0-9][0-9.,]*)\s*(.*)$/);
+    if (!m) return null;
+    var val = parseFloat(m[1].replace(/,/g, ''));
+    if (isNaN(val)) return null;
+    var w = m[2].trim().toLowerCase();
+    if (!w) return { val: val, unit: null };
+    for (var k in UNIT_WORDS) {
+      for (var j = 0; j < UNIT_WORDS[k].length; j++) if (UNIT_WORDS[k][j].toLowerCase() === w) return { val: val, unit: k };
+    }
+    return null;
+  }
+  function fmtNum(v) { return String(Math.round(v * 100) / 100); }
+  function fmtDim(val, unitK) {
+    if (!unitK) return fmtNum(val);
+    var u = unitOf(unitK);
+    return state.uiLang === 'ko' ? fmtNum(val) + u.ko : fmtNum(val) + ' ' + u.en;
+  }
+  /* 치수 문구 확정: 숫자면 선택된 단위를 붙인다 (생성 시 플로팅 입력) */
   function applyUnit(txt) {
     var u = $('#unitSel').value;
-    if (u && /[0-9.]$/.test(txt.trim())) return txt.trim() + u;
-    return txt.trim();
+    txt = txt.trim();
+    if (u && /^[0-9][0-9.,]*$/.test(txt)) return fmtDim(parseFloat(txt.replace(/,/g, '')), u);
+    return txt;
   }
 
   function renderLabelList() {
@@ -315,7 +346,13 @@
     if (!state.labels.length) { box.innerHTML = '<div class="lempty">' + t('lempty') + '</div>'; return; }
     state.labels.forEach(function (l, i) {
       var row = document.createElement('div'); row.className = 'lrow';
-      var s = document.createElement('span'); s.textContent = l.text; row.appendChild(s);
+      var inp = document.createElement('input'); inp.type = 'text'; inp.value = l.text;
+      inp.addEventListener('change', function () {
+        var v = inp.value.trim();
+        if (v) { l.text = v; update(); }
+        else inp.value = l.text;   // 빈 문구 방지 (삭제는 ✕)
+      });
+      row.appendChild(inp);
       var del = document.createElement('button'); del.textContent = '✕';
       del.onclick = function () { state.labels.splice(i, 1); update(); renderLabelList(); };
       row.appendChild(del); box.appendChild(row);
@@ -338,6 +375,10 @@
     $('#inkMode option[value=screen]').textContent = t('inkScreen');
     $('#inkMode option[value=print]').textContent = t('inkPrint');
     $('#inkMode option[value=off]').textContent = t('inkOff');
+    UNITS.forEach(function (u) {   // 플로팅 단위 선택도 언어에 맞춤
+      var op = $('#unitSel option[value="' + u.k + '"]');
+      if (op) op.textContent = state.uiLang === 'ko' ? u.ko : u.en;
+    });
     $('#h-labels').textContent = t('labels');
     // (시퀀스 헤더는 renderSeqList가 관리)
     $('#editHint').textContent = t('editHint');
@@ -359,7 +400,7 @@
     dpChrome();
   }
 
-  function renderGallery() {
+  function renderGallery() {   // 카테고리 아코디언 — 누르면 아래로 펼침 (긴 목록 대응)
     var g = $('#gallery'); g.innerHTML = '';
     var all = TEMPLATES.concat([RULEBOOK_TPL, TRACE_TPL]);
     var groups = {};
@@ -367,10 +408,16 @@
       var cat = tpl.category.split('/')[0];
       (groups[cat] = groups[cat] || []).push(tpl);
     });
+    state.galleryOpen = state.galleryOpen || {};
     Object.keys(groups).forEach(function (cat) {
-      var head = document.createElement('div');
-      head.className = 'gcat'; head.textContent = cat;
+      var open = !!state.galleryOpen[cat];
+      var head = document.createElement('button');
+      head.className = 'gcat'; head.type = 'button';
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+      head.textContent = (open ? '▾ ' : '▸ ') + cat + ' (' + groups[cat].length + ')';
+      head.onclick = function () { state.galleryOpen[cat] = !open; renderGallery(); };
       g.appendChild(head);
+      if (!open) return;
       groups[cat].forEach(function (tpl) {
         var card = document.createElement('button');
         card.className = 'card' + (state.tpl === tpl ? ' active' : '');
@@ -382,6 +429,8 @@
   }
 
   function selectTemplate(tpl) {
+    state.galleryOpen = state.galleryOpen || {};
+    state.galleryOpen[tpl.category.split('/')[0]] = true;   // 선택한 템플릿의 카테고리는 펼침 유지
     state.tpl = tpl; state.loadedSpec = null; state.editingPage = null;   // 시퀀스(pages)는 유지 — 여러 템플릿을 섞어 레슨 구성
     state.labels = []; state.dimOverrides = {}; state.userDims = []; state.pendingDimPt = null; state.dimHidden = {};
     renderLabelList(); renderSeqList();
@@ -775,7 +824,7 @@
     } catch (e) { $('#report').textContent = 'Error: ' + e.message; }
   }
 
-  /* 치수 레이블 편집 폼 (모든 템플릿 공통) */
+  /* 치수 레이블 편집 폼: 수치 + 단위 선택(변경 시 자동 환산) — 패널에서 직접 수정 */
   function renderDimForm() {
     var dims = state.spec.elements.filter(function (e) { return e.type === 'dimension'; });
     var head = $('#h-dims'), box = $('#dimForm');
@@ -787,15 +836,44 @@
     dims.forEach(function (d, i) {
       var row = document.createElement('label'); row.className = 'frow';
       var s = document.createElement('span'); s.textContent = (i + 1) + '.'; row.appendChild(s);
-      var inp = document.createElement('input'); inp.type = 'text';
-      inp.value = d.label;
-      if (d._userIdx != null) {   // 사용자 추가 치수
-        inp.addEventListener('change', function () { if (state.userDims[d._userIdx]) { state.userDims[d._userIdx].label = inp.value; update(); } });
-      } else {                    // 템플릿 치수 (원본 인덱스로 덮어쓰기)
-        inp.addEventListener('change', function () { state.dimOverrides[d._dimIdx] = inp.value; update(); });
+      function commit(label) {
+        if (d._userIdx != null) { if (state.userDims[d._userIdx]) { state.userDims[d._userIdx].label = label; update(); } }
+        else { state.dimOverrides[d._dimIdx] = label; update(); }
       }
-      inp.style.width = '150px';
-      row.appendChild(inp);
+      var parsed = parseDimLabel(d.label);
+      var inp = document.createElement('input');
+      if (parsed) {                       // 수치 + 단위 드롭다운
+        inp.type = 'number'; inp.step = 'any'; inp.value = parsed.val;
+        inp.style.width = '76px';
+        var sel = document.createElement('select');
+        var op0 = document.createElement('option'); op0.value = ''; op0.textContent = '—'; sel.appendChild(op0);
+        UNITS.forEach(function (u) {
+          var op = document.createElement('option'); op.value = u.k;
+          op.textContent = state.uiLang === 'ko' ? u.ko : u.en;
+          sel.appendChild(op);
+        });
+        sel.value = parsed.unit || '';
+        inp.addEventListener('change', function () {
+          var v = parseFloat(inp.value); if (isNaN(v)) return;
+          commit(fmtDim(v, sel.value || null));
+        });
+        sel.addEventListener('change', function () {
+          var v = parseFloat(inp.value); if (isNaN(v)) return;
+          var oldU = parsed.unit, newU = sel.value || null;
+          if (oldU && newU && oldU !== newU) {          // 단위 환산 (물리 길이 유지)
+            v = v * unitOf(oldU).f / unitOf(newU).f;
+            v = Math.round(v * 100) / 100;
+            inp.value = v;
+          }
+          parsed.unit = newU;
+          commit(fmtDim(v, newU));
+        });
+        row.appendChild(inp); row.appendChild(sel);
+      } else {                            // 자유 문구
+        inp.type = 'text'; inp.value = d.label; inp.style.width = '150px';
+        inp.addEventListener('change', function () { commit(inp.value); });
+        row.appendChild(inp);
+      }
       var del = document.createElement('button'); del.textContent = '✕';
       del.style.cssText = 'border:none;background:none;color:#c8265c;cursor:pointer';
       del.onclick = function (ev) {
@@ -808,6 +886,20 @@
       box.appendChild(row);
     });
   }
+  /* 도면에서 치수/레이블 클릭 → 패널의 해당 행으로 포커스 (플로팅 입력 대신) */
+  function flashRow(row) {
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest' });
+    var inp = row.querySelector('input');
+    if (inp) { inp.focus(); if (inp.select) inp.select(); }
+    row.style.boxShadow = '0 0 0 2px rgba(200,38,92,.5)';
+    setTimeout(function () { row.style.boxShadow = ''; }, 1200);
+  }
+  function focusDimRow(el) {
+    var dims = state.spec.elements.filter(function (e) { return e.type === 'dimension'; });
+    flashRow($('#dimForm').children[dims.indexOf(el)]);
+  }
+  function focusLabelRow(i) { flashRow($('#labelList').children[i]); }
 
   function draw() {
     var r = TGIL.render(state.spec);

@@ -17,7 +17,8 @@ main{display:grid;grid-template-columns:250px minmax(0,1fr) 330px;gap:18px;paddi
 h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:#8a8378;margin:18px 0 8px}
 #leftcol h2,#rightcol h2:first-child{margin-top:0}
 #gallery{display:grid;grid-template-columns:1fr;gap:7px}
-.gcat{grid-column:1/-1;font-size:11px;font-weight:600;color:#b0a99c;margin-top:6px;text-transform:uppercase;letter-spacing:.6px}
+.gcat{grid-column:1/-1;font:inherit;font-size:11px;font-weight:600;color:#8a8378;margin-top:6px;text-transform:uppercase;letter-spacing:.6px;background:none;border:none;text-align:left;cursor:pointer;padding:5px 2px;border-radius:6px}
+.gcat:hover{background:#efece7;color:#1a1a1a}
 .card{text-align:left;padding:8px 12px;background:var(--card);border:1.5px solid var(--line);border-radius:10px;cursor:pointer;font:inherit}
 .card b{display:block;font-size:13px}
 .card small{color:#999;font-size:10px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -64,7 +65,10 @@ summary{cursor:pointer;font-size:13px;color:#8a8378}
 #labelInput{font:13px system-ui;padding:5px 8px;border:2px solid var(--accent);border-radius:6px;width:150px}
 #unitSel{font:12.5px system-ui;padding:5px 4px;border:1.5px solid var(--line);border-radius:6px;display:none}
 #labelList{display:flex;flex-direction:column;gap:5px}
-#labelList .lrow{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px}
+#labelList .lrow{display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px}
+#labelList .lrow input{flex:1;min-width:0;font:inherit;padding:3px 6px}
+#dimForm .frow input[type=number]{width:76px}
+#dimForm .frow select{font:inherit;padding:3px 4px;max-width:96px}
 #labelList .lrow button{border:none;background:none;color:#c8265c;cursor:pointer;font-size:14px}
 #labelList .lempty{color:#aaa;font-size:12px}
 </style>
@@ -89,7 +93,7 @@ summary{cursor:pointer;font-size:13px;color:#8a8378}
     <div id="preview" role="img" aria-label="Tactile graphic preview"></div>
     <span id="labelBox" style="display:none;position:fixed;z-index:50">
       <input id="labelInput" type="text" autocomplete="off">
-      <select id="unitSel"><option value="">—</option><option value="mm">mm</option><option value="cm" selected>cm</option><option value="m">m</option></select>
+      <select id="unitSel"><option value="">—</option><option value="mm">mm</option><option value="cm" selected>cm</option><option value="m">m</option><option value="ft">ft</option><option value="in">in</option></select>
     </span>
     <h2 id="h-report"></h2>
     <ul id="report"></ul>

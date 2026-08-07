@@ -59,6 +59,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok('item 7: sequence header toggles collapse', collapsed && expanded);
 
   // ── 문서 변환기 진입 ──
+  await page.click('#gallery .gcat:has-text("Documents")');   // 아코디언 펼침
   await page.click('#gallery .card:has-text("Braille Document Converter")');
   // 항목 6: hwp 안내
   const hint = await page.evaluate(() => document.querySelector('#form .hint').textContent);
