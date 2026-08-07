@@ -33,8 +33,6 @@ jobs:
           cp dist/tactile-material-maker-ko.html site/index.html
           cp dist/tactile-material-maker.html site/en.html
       - uses: actions/configure-pages@v4
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
