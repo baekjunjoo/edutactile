@@ -63,6 +63,10 @@ summary{cursor:pointer;font-size:13px;color:#8a8378}
 #preview.labeling{cursor:crosshair}
 #labelBox{display:flex;gap:4px;align-items:center;background:#fff;padding:3px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.18)}
 #labelInput{font:13px system-ui;padding:5px 8px;border:2px solid var(--accent);border-radius:6px;width:150px}
+/* 제자리 편집: 도면의 그 글자 위에 겹쳐 뜨는 입력 (팝업처럼 보이지 않게) */
+#labelBox.inplace{padding:0;background:transparent;box-shadow:none;border-radius:5px}
+#labelBox.inplace #labelInput{padding:1px 4px;border:1.5px solid var(--accent);border-radius:5px;
+  text-align:center;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.95);width:auto}
 #unitSel{font:12.5px system-ui;padding:5px 4px;border:1.5px solid var(--line);border-radius:6px;display:none}
 #labelList{display:flex;flex-direction:column;gap:5px}
 #labelList .lrow{display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px}

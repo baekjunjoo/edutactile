@@ -416,12 +416,15 @@
     renderLeaders(spec, L, body, report);
 
     // 타이틀 (중앙 정렬 점자)
+    var titleW = 0;
     L.titleLines.forEach(function (t, i) {
       var cells = translate(t, spec.brailleCode);
       var sz = labelSize(cells);
+      if (sz.w > titleW) titleW = sz.w;
       var tx0 = L.inner.x + (L.inner.w - sz.w) / 2, ty0 = L.titleY + i * P.braille.lineAdv;
       body.push('<g fill="#000">' + brailleSVG(cells, tx0, ty0) + '</g>');
       body.push(inkText(spec, t, tx0 + sz.w / 2, ty0 + sz.h + 0.8));
+      L.titleBox = { cx: L.inner.x + L.inner.w / 2, y0: L.titleY, w: titleW, h: (i + 1) * P.braille.lineAdv };
     });
 
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + L.page.w + 'mm" height="' + L.page.h + 'mm" viewBox="0 0 ' + L.page.w + ' ' + L.page.h + '">' +
@@ -452,6 +455,7 @@
           var lx = side === 'left' ? labelEdge - e._size.w : labelEdge;
           body.push('<g fill="#000">' + brailleSVG(e._cells, lx, e._ly - e._size.h / 2) + '</g>');
           body.push(inkText(spec, e.text, lx + e._size.w / 2, e._ly + e._size.h / 2 + 0.8));
+          e._labelMm = [lx + e._size.w / 2, e._ly];   // 히트 영역 (편집 UI용)
           var sx0 = side === 'left' ? labelEdge + 2.5 : labelEdge - 2.5;
           // 리드선은 미세 파선 — 치수선(실선 최세선)과 촉각으로 구별 (페르소나 피드백)
           body.push('<line x1="' + f(sx0) + '" y1="' + f(e._ly) + '" x2="' + f(e._tx) + '" y2="' + f(e._ty) + '" ' + strokeAttr('dim') + ' stroke-dasharray="2,1.2"/>');
@@ -463,6 +467,7 @@
           var ly = side === 'top' ? edgeY - GAP - e._size.h : edgeY + GAP;
           body.push('<g fill="#000">' + brailleSVG(e._cells, e._tx - e._size.w / 2, ly) + '</g>');
           body.push(inkText(spec, e.text, e._tx, ly + e._size.h + 0.8));
+          e._labelMm = [e._tx, ly + e._size.h / 2];   // 히트 영역 (편집 UI용)
           var sy0 = side === 'top' ? ly + e._size.h + 2 : ly - 2;
           body.push('<line x1="' + f(e._tx) + '" y1="' + f(sy0) + '" x2="' + f(e._tx) + '" y2="' + f(e._ty) + '" ' + strokeAttr('dim') + ' stroke-dasharray="2,1.2"/>');
           body.push('<circle cx="' + f(e._tx) + '" cy="' + f(e._ty) + '" r="1.1" fill="#000"/>');

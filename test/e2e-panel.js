@@ -56,7 +56,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok('ALL dims convert at once (78/27/39 ft → 23.77/8.23/11.89 m)', conv.vals === '23.77,8.23,11.89' && conv.svg, JSON.stringify(conv));
   ok('rows show unit word', /meters,meters,meters/.test(conv.units), conv.units);
 
-  // ── 3. 미리보기에서 치수 직접 수정 (클릭 → 플로팅 입력) ──
+  // ── 3. 미리보기에서 치수 제자리 수정 (그 글자 위에 겹쳐 뜨는 입력) ──
   const dimPos = await page.evaluate(() => {
     const svg = document.querySelector('#preview svg');
     const r = svg.getBoundingClientRect();
@@ -67,13 +67,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   await page.mouse.click(dimPos.x, dimPos.y);
   await sleep(200);
-  const fl = await page.evaluate(() => ({
-    shown: document.querySelector('#labelBox').style.display !== 'none',
-    val: document.querySelector('#labelInput').value,
-    unit: document.querySelector('#unitSel').value,
-    unitShown: document.querySelector('#unitSel').style.display !== 'none'
-  }));
-  ok('clicking dim in preview opens inline editor (value+unit preset)', fl.shown && fl.val === '23.77' && fl.unit === 'm' && fl.unitShown, JSON.stringify(fl));
+  const fl = await page.evaluate(() => {
+    const box = document.querySelector('#labelBox'), inp = document.querySelector('#labelInput');
+    const b = inp.getBoundingClientRect();
+    return {
+      shown: box.style.display !== 'none',
+      inplace: box.className === 'inplace',
+      val: inp.value,
+      unitShown: document.querySelector('#unitSel').style.display !== 'none',
+      cx: b.left + b.width / 2, cy: b.top + b.height / 2
+    };
+  });
+  ok('clicking dim opens in-place editor with current value', fl.shown && fl.inplace && fl.val === '23.77', JSON.stringify(fl));
+  ok('in-place editor sits ON the label (not a popup beside it)',
+    Math.abs(fl.cx - dimPos.x) < 6 && Math.abs(fl.cy - dimPos.y) < 6,
+    `input(${Math.round(fl.cx)},${Math.round(fl.cy)}) vs label(${Math.round(dimPos.x)},${Math.round(dimPos.y)})`);
+  ok('no unit dropdown in edit (unit is global)', !fl.unitShown);
   await page.fill('#labelInput', '24');
   await page.press('#labelInput', 'Enter');
   await sleep(300);
@@ -91,11 +100,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   await page.mouse.click(tPos.x, tPos.y);
   await sleep(200);
-  const tf = await page.evaluate(() => ({
-    shown: document.querySelector('#labelBox').style.display !== 'none',
-    val: document.querySelector('#labelInput').value
-  }));
-  ok('clicking title opens inline editor with current title', tf.shown && /Tennis/.test(tf.val), JSON.stringify(tf));
+  const tf = await page.evaluate(() => {
+    const box = document.querySelector('#labelBox'), inp = document.querySelector('#labelInput');
+    const b = inp.getBoundingClientRect();
+    return {
+      shown: box.style.display !== 'none', inplace: box.className === 'inplace',
+      val: inp.value, cx: b.left + b.width / 2
+    };
+  });
+  ok('clicking title opens in-place editor with current title', tf.shown && tf.inplace && /Tennis/.test(tf.val), JSON.stringify(tf));
+  ok('title editor centered on the title', Math.abs(tf.cx - tPos.x) < 8, Math.round(tf.cx) + ' vs ' + Math.round(tPos.x));
   await page.fill('#labelInput', 'My Court');
   await page.press('#labelInput', 'Enter');
   await sleep(300);
@@ -124,6 +138,44 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     inSvg: document.querySelector('#preview').innerHTML.includes('net line')
   }));
   ok('label editable in panel, reflected in diagram', lbl.text === 'net line' && lbl.inSvg, JSON.stringify(lbl));
+
+  // ── 6. 레이블 글자도 미리보기에서 제자리 수정 ──
+  await page.click('#labelMode');   // 레이블 추가 모드 해제 (연속 추가 모드라 켜져 있음)
+  const ldPos = await page.evaluate(() => {
+    const svg = document.querySelector('#preview svg');
+    const r = svg.getBoundingClientRect();
+    const spec = JSON.parse(document.querySelector('#json').value);
+    const l = spec.elements.find(e => e.type === 'leader' && e._labelMm);
+    const paper = { w: 292.1, h: 279.4 };
+    return { x: r.left + l._labelMm[0] / paper.w * r.width, y: r.top + l._labelMm[1] / paper.h * r.height };
+  });
+  await page.mouse.click(ldPos.x, ldPos.y);
+  await sleep(200);
+  const ldEdit = await page.evaluate(() => ({
+    inplace: document.querySelector('#labelBox').className === 'inplace',
+    val: document.querySelector('#labelInput').value
+  }));
+  ok('clicking a label in preview opens in-place editor', ldEdit.inplace && ldEdit.val === 'net line', JSON.stringify(ldEdit));
+  await page.fill('#labelInput', 'center net');
+  await page.press('#labelInput', 'Enter');
+  await sleep(300);
+  const ldDone = await page.evaluate(() => ({
+    svg: document.querySelector('#preview').innerHTML.includes('center net'),
+    panel: document.querySelector('#labelList .lrow input').value
+  }));
+  ok('label in-place edit updates diagram + panel', ldDone.svg && ldDone.panel === 'center net', JSON.stringify(ldDone));
+
+  // ── 7. 다른 곳 클릭 = 확정 (편집 중 입력이 사라지지 않고 반영) ──
+  await page.mouse.click(ldPos.x, ldPos.y);
+  await sleep(150);
+  await page.fill('#labelInput', 'the net');
+  await page.mouse.click(tPos.x, tPos.y + 200);   // 도면의 빈 곳
+  await sleep(300);
+  const blurCommit = await page.evaluate(() => ({
+    svg: document.querySelector('#preview').innerHTML.includes('the net'),
+    boxHidden: document.querySelector('#labelBox').style.display === 'none'
+  }));
+  ok('clicking away commits the in-place edit', blurCommit.svg && blurCommit.boxHidden, JSON.stringify(blurCommit));
 
   await browser.close();
   console.log(`\n결과: ${pass} 통과 / ${fail} 실패`);
