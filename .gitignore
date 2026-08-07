@@ -1,0 +1,18 @@
+node_modules/
+dist/
+
+# 공개 저장소 제외 자산 — 로컬에서만 사용 (README 참고)
+rulebook/AppleBraillePinpoint.ttf
+rulebook/AppleBraillePinpoint.ttf.b64
+rulebook/arabic-709.json
+
+# 테스트 산출물
+test/*.png
+test/*.svg
+test/*.dtms
+test/*.docx
+test/*.html
+test/*.ebrl
+test/*.json
+test/*.brf
+!test/lib/
