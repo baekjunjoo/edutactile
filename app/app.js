@@ -11,7 +11,8 @@
     userDims: [], dimMode: false, pendingDimPt: null, pendingKind: null,
     dragging: null, didDrag: false, dimHidden: {}, pendingDimEl: null,
     pages: [], editingPage: null,
-    titleOverride: null, dimUnit: null, leaderOverrides: {}, pendingLeaderEl: null
+    titleOverride: null, dimUnit: null, leaderOverrides: {}, pendingLeaderEl: null,
+    dpView: { zoom: 1, cx: null, cy: null }
   };
 
   /* 점자 규정집 변환기 가상 템플릿 */
@@ -69,7 +70,8 @@
       dpNoSdk: 'Could not load the DotPad SDK. Have DotPadSDK-3.0.0.js ready (it cannot be embedded for license reasons) and click "Connect DotPad" again — a file picker will ask for it.',
       dpPickSdk: '📂 Select the DotPadSDK-3.0.0.js file in the dialog that just opened. When this file is opened directly from disk, the browser blocks automatic loading, so a one-time manual selection is needed.',
       dpFail: 'DotPad connection failed{e} — check the device is on and in range, then try again.',
-      dpKeys: 'DotPad connected — pan keys ◀▶: previous/next page·item, F1: resend screen.',
+      dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins, aspect preserved). Device keys: ◀▶ pan left/right (page prev/next at full view), F1/F2 up/down, F3/F4 zoom out/in.',
+      dpKeysRb: 'DotPad connected — device keys: ◀▶ previous/next item, F1 resend, F2 first item, F3/F4 back/forward 10.',
       dl: { svg: 'SVG (embosser/Monarch)', pdf: 'PDF (print)', dtms: 'DotPad .dtms', brf: 'BRF key page', json: 'Save spec JSON', load: 'Open spec JSON' }
     },
     ko: {
@@ -103,7 +105,8 @@
       dpNoSdk: 'DotPad SDK를 불러오지 못했습니다. DotPadSDK-3.0.0.js 파일을 준비한 뒤 "DotPad 연결"을 다시 누르세요 — 파일 선택 창이 열립니다 (라이선스상 내장 불가).',
       dpPickSdk: '📂 방금 열린 창에서 DotPadSDK-3.0.0.js 파일을 선택해주세요. 파일을 디스크에서 직접 열면 브라우저가 자동 불러오기를 막아서, 한 번만 직접 선택이 필요합니다.',
       dpFail: 'DotPad 연결 실패{e} — 기기 전원과 거리를 확인하고 다시 시도하세요.',
-      dpKeys: 'DotPad 연결됨 — 팬 키 ◀▶: 이전/다음 페이지·항목, F1: 화면 재전송.',
+      dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀, 비율 유지). 기기 키: ◀▶ 좌우 이동(전체보기에선 이전/다음 페이지), F1/F2 위/아래, F3/F4 축소/확대.',
+      dpKeysRb: 'DotPad 연결됨 — 기기 키: ◀▶ 이전/다음 항목, F1 재전송, F2 처음으로, F3/F4 10개 뒤로/앞으로.',
       dl: { svg: 'SVG (엠보서/Monarch)', pdf: 'PDF (인쇄)', dtms: 'DotPad .dtms', brf: 'BRF 키 페이지', json: '스펙 저장 (JSON)', load: '스펙 불러오기' }
     }
   };
@@ -162,6 +165,7 @@
     $('#preview').addEventListener('mousedown', onDragStart);
     window.addEventListener('mousemove', onDragMove);
     window.addEventListener('mouseup', onDragEnd);
+    window.addEventListener('resize', function () { dpOverlay(); });
     $('#labelInput').addEventListener('keydown', function (ev) {
       if (ev.key === 'Enter') {
         var txt = ev.target.value.trim();
@@ -545,6 +549,7 @@
     state.tpl = tpl; state.loadedSpec = null; state.editingPage = null;   // 시퀀스(pages)는 유지 — 여러 템플릿을 섞어 레슨 구성
     state.labels = []; state.dimOverrides = {}; state.userDims = []; state.pendingDimPt = null; state.dimHidden = {};
     state.titleOverride = null; state.dimUnit = null; state.leaderOverrides = {};
+    state.dpView = { zoom: 1, cx: null, cy: null };   // 새 도면은 전체보기부터
     renderLabelList(); renderSeqList();
     renderGallery(); renderForm(); update();
   }
@@ -901,7 +906,7 @@
         ? '⚠️ 자동 파싱(베타): ' + rp.pages + '쪽에서 항목 ' + rp.items + '개 추출, 그룹 순서 자동 교정 ' + (rp.flippedItems || 0) + '건. 점 번호가 중요한 문서이니 원본과 대조 검토 후 사용하세요. 검증된 JSON이 있다면 그쪽을 권장합니다.'
         : '⚠️ Auto-parse (beta): ' + rp.items + ' items from ' + rp.pages + ' pages, ' + (rp.flippedItems || 0) + ' group-order fixes. Review dots against the original before use; a verified JSON is preferred.');
     }
-    if (dpConnected()) msgs.push(t('dpKeys'));
+    if (dpConnected()) msgs.push(t('dpKeysRb'));
     $('#report').innerHTML = msgs.map(function (m) { return '<li>' + m + '</li>'; }).join('');
     dpSchedule();
   }
@@ -1094,7 +1099,7 @@
       ? msgs.map(function (m) { return '<li>' + m + '</li>'; }).join('')
       : '<li>—</li>';
     $('#json').value = JSON.stringify(state.spec, null, 2);
-    dpSchedule();
+    dpSchedule(); dpOverlay();
   }
 
   function applyJson() {
@@ -1362,6 +1367,54 @@
   /* ── DotPad 실시간 연동 (dotpad-dev 계약: 마이크로배치 → 완성 프레임만 push) ── */
   var dpNav = { idx: 0 };
   var _dpFlushT = null;
+  var DP_W = 60, DP_H = 40, DP_AR = DP_W / DP_H;      // 그래픽 핀 60×40
+  var DP_ZOOMS = [1, 1.5, 2, 3, 4, 6];
+
+  /* 기기 화면에 대응하는 페이지 영역(mm). zoom 1 = 페이지 전체가 화면 비율에 맞게 들어감 */
+  function dpViewport() {
+    var pg = (state.layout && state.layout.page) || TGIL.PROFILE.page;
+    var fitW, fitH;
+    if (pg.w / pg.h > DP_AR) { fitW = pg.w; fitH = pg.w / DP_AR; }   // 가로가 길면 가로 기준
+    else { fitH = pg.h; fitW = pg.h * DP_AR; }                        // 세로가 길면 세로 기준 (비율 유지 = 왜곡 없음)
+    var z = state.dpView.zoom || 1;
+    var w = fitW / z, h = fitH / z;
+    var cx = state.dpView.cx == null ? pg.w / 2 : state.dpView.cx;
+    var cy = state.dpView.cy == null ? pg.h / 2 : state.dpView.cy;
+    if (w < pg.w) cx = Math.max(w / 2, Math.min(pg.w - w / 2, cx)); else cx = pg.w / 2;
+    if (h < pg.h) cy = Math.max(h / 2, Math.min(pg.h - h / 2, cy)); else cy = pg.h / 2;
+    state.dpView.cx = cx; state.dpView.cy = cy;
+    return { x: cx - w / 2, y: cy - h / 2, w: w, h: h, page: pg };
+  }
+  /* 전체 페이지 SVG → 뷰포트만 잘라낸 SVG (viewBox 교체 = 벡터 그대로 확대, 계단현상 없음) */
+  function svgCrop(svg, vp, wpx, hpx) {
+    return svg.replace(/^\s*<svg[^>]*>/, function (tag) {
+      return tag
+        .replace(/\swidth="[^"]*"/, ' width="' + wpx + '"')
+        .replace(/\sheight="[^"]*"/, ' height="' + hpx + '"')
+        .replace(/\sviewBox="[^"]*"/, ' viewBox="' + f2(vp.x) + ' ' + f2(vp.y) + ' ' + f2(vp.w) + ' ' + f2(vp.h) + '"');
+    });
+  }
+  function f2(n) { return Math.round(n * 100) / 100; }
+
+  /* 미리보기 위에 기기 화면 범위 표시 */
+  function dpOverlay() {
+    var box = $('#dpVp');
+    if (!box) {   // draw()가 #preview를 새로 그리면 사라지므로 없으면 다시 만든다
+      box = document.createElement('div'); box.id = 'dpVp';
+      $('#preview').appendChild(box);
+    }
+    var svg = $('#preview svg');
+    if (!dpConnected() || !svg || !state.layout || rbMode()) { box.style.display = 'none'; return; }
+    var vp = dpViewport();
+    var pr = $('#preview').getBoundingClientRect(), sr = svg.getBoundingClientRect();
+    var sx = sr.width / vp.page.w, sy = sr.height / vp.page.h;
+    box.style.display = 'block';
+    box.style.left = Math.round(sr.left - pr.left + vp.x * sx) + 'px';
+    box.style.top = Math.round(sr.top - pr.top + vp.y * sy) + 'px';
+    box.style.width = Math.round(vp.w * sx) + 'px';
+    box.style.height = Math.round(vp.h * sy) + 'px';
+    box.textContent = 'DotPad 60×40' + (state.dpView.zoom > 1 ? '  ×' + state.dpView.zoom : '');
+  }
   function dpConnect() {
     var B = window.DOTPAD && DOTPAD.BLE;
     if (!B) return;
@@ -1392,6 +1445,7 @@
     btn.classList.toggle('on', n > 0);
     btn.title = n ? t('dpAddTip') : '';
     $('#dpOff').style.display = n ? '' : 'none';
+    dpOverlay();
   }
   function dpConnected() { return window.DOTPAD && DOTPAD.BLE.connected; }
   /* 렌더(clear→draw)가 같은 턴에서 끝난 뒤 완성 프레임만 push — 빈 프레임 전송 방지 */
@@ -1411,44 +1465,83 @@
       var it = items[dpNav.idx];
       B.push(DOTPAD.encodeRows(RULEBOOK.itemToGrid(it.dots)),
              DOTPAD.textLineHex(it.dots.map(RULEBOOK.parseDots)));
+      dpOverlay();
       return;
     }
-    if (!state.svg) return;               // 도면: 현재 미리보기 SVG → 60×40
-    var svg = state.svg;
-    dpRasterize(svg, function (grid) {
+    if (!state.svg) return;               // 도면: 뷰포트 영역만 잘라 60×40으로
+    var svg = state.svg, vp = dpViewport();
+    dpRasterize(svg, vp, function (grid) {
       if (!dpConnected() || state.svg !== svg) return;   // 뒤늦은 프레임 폐기
-      var titleHex = null;
-      try {
-        var tl = state.spec && state.spec.title && state.spec.title.text;
-        if (tl) titleHex = DOTPAD.textLineHex(TGIL.translate(tl, state.spec.brailleCode || 'ueb').slice(0, 20));
-      } catch (e) {}
-      B.push(DOTPAD.encodeRows(grid), titleHex);
+      B.push(DOTPAD.encodeRows(grid), dpTextHex(vp));
     });
+    dpOverlay();
   }
-  function dpRasterize(svg, cb) {
+  /* 텍스트 라인: 기본은 제목, 확대 중이면 배율·현재 칸 위치 (촉각 사용자용 현재 위치 안내) */
+  function dpTextHex(vp) {
+    try {
+      var code = (state.spec && state.spec.brailleCode) || 'ueb', txt;
+      if (state.dpView.zoom > 1) {
+        var col = Math.floor(vp.x / vp.w + 0.5) + 1, row = Math.floor(vp.y / vp.h + 0.5) + 1;
+        var cols = Math.max(1, Math.ceil(vp.page.w / vp.w)), rows = Math.max(1, Math.ceil(vp.page.h / vp.h));
+        txt = 'x' + state.dpView.zoom + ' ' + row + '-' + col + '/' + rows + '-' + cols;
+      } else {
+        txt = state.spec && state.spec.title && state.spec.title.text;
+      }
+      return txt ? DOTPAD.textLineHex(TGIL.translate(txt, code).slice(0, 20)) : null;
+    } catch (e) { return null; }
+  }
+  function dpRasterize(svg, vp, cb) {
     var img = new Image();
+    var SS = 4, cw = DP_W * SS, chh = DP_H * SS;
     img.onload = function () {
-      var SS = 4, cw = 60 * SS, chh = 40 * SS;
       var cv = document.createElement('canvas'); cv.width = cw; cv.height = chh;
       var ctx = cv.getContext('2d');
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, chh);
       ctx.drawImage(img, 0, 0, cw, chh);
-      cb(EXPORTERS.gridFromImageData(ctx.getImageData(0, 0, cw, chh).data, cw, chh, 60, 40));
+      cb(EXPORTERS.gridFromImageData(ctx.getImageData(0, 0, cw, chh).data, cw, chh, DP_W, DP_H));
     };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgCrop(svg, vp, cw, chh));
   }
-  /* 팬 좌/우 = 이전/다음 (규정집 항목 · 레슨 페이지), F1 = 전체 재전송 */
+  function dpZoomBy(d) {
+    var i = DP_ZOOMS.indexOf(state.dpView.zoom);
+    if (i < 0) i = 0;
+    var n = Math.max(0, Math.min(DP_ZOOMS.length - 1, i + d));
+    if (n === i) return;
+    state.dpView.zoom = DP_ZOOMS[n];
+    dpSchedule(); dpOverlay();
+  }
+  function dpPan(dx, dy) {
+    var vp = dpViewport();
+    state.dpView.cx = vp.x + vp.w / 2 + dx * vp.w * 0.5;   // 반 화면씩 (맥락 유지)
+    state.dpView.cy = vp.y + vp.h / 2 + dy * vp.h * 0.5;
+    dpSchedule(); dpOverlay();
+  }
+  /* 키 배치 — 도면: 팬 좌/우 = 좌우 이동(확대 없으면 이전/다음 페이지), F1/F2 = 위/아래, F3/F4 = 축소/확대
+   *          규정집: 팬 좌/우 = 이전/다음 항목, F1 = 재전송, F2 = 처음, F3/F4 = 10개 이전/다음 */
   function dpKey(key) {
-    if (key === 'PanningRight' || key === 'PanningLeft') {
+    if (rbMode()) {
+      var n = rbItems().length;
+      if (key === 'PanningRight') dpNav.idx++;
+      else if (key === 'PanningLeft') dpNav.idx--;
+      else if (key === 'KeyFunction2') dpNav.idx = 0;
+      else if (key === 'KeyFunction3') dpNav.idx -= 10;
+      else if (key === 'KeyFunction4') dpNav.idx += 10;
+      else if (key === 'KeyFunction1') DOTPAD.BLE.devs.forEach(function (e) { e.lastSent = []; e.lastText = null; });
+      dpNav.idx = Math.max(0, Math.min(dpNav.idx, Math.max(0, n - 1)));
+      dpSchedule();
+      return;
+    }
+    if (key === 'KeyFunction3') { dpZoomBy(-1); return; }
+    if (key === 'KeyFunction4') { dpZoomBy(1); return; }
+    if (key === 'KeyFunction1') { dpPan(0, -1); return; }
+    if (key === 'KeyFunction2') { dpPan(0, 1); return; }
+    if (key === 'PanningLeft' || key === 'PanningRight') {
       var d = key === 'PanningRight' ? 1 : -1;
-      if (rbMode()) { dpNav.idx += d; dpSchedule(); }
-      else if (state.pages.length) {
+      if (state.dpView.zoom > 1) { dpPan(d, 0); return; }
+      if (state.pages.length) {   // 전체보기 상태에서는 좌우 = 이전/다음 페이지
         var i = (state.editingPage == null ? (d > 0 ? -1 : state.pages.length) : state.editingPage) + d;
         if (i >= 0 && i < state.pages.length) openPage(i);
       }
-    } else if (key === 'KeyFunction1') {
-      DOTPAD.BLE.devs.forEach(function (e) { e.lastSent = []; e.lastText = null; });
-      dpSchedule();
     }
   }
 
