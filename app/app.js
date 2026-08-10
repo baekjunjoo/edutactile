@@ -12,7 +12,7 @@
     dragging: null, didDrag: false, dimHidden: {}, pendingDimEl: null,
     pages: [], editingPage: null,
     titleOverride: null, dimUnit: null, leaderOverrides: {}, pendingLeaderEl: null,
-    dpView: { zoom: 1, cx: null, cy: null }
+    dpView: { zoom: 1.5, cx: null, cy: null }   // ×1.5 = 실기기에서 가장 안정적으로 읽히는 기본 배율
   };
 
   /* 점자 규정집 변환기 가상 템플릿 */
@@ -70,7 +70,7 @@
       dpNoSdk: 'Could not load the DotPad SDK. Have DotPadSDK-3.0.0.js ready (it cannot be embedded for license reasons) and click "Connect DotPad" again — a file picker will ask for it.',
       dpPickSdk: '📂 Select the DotPadSDK-3.0.0.js file in the dialog that just opened. When this file is opened directly from disk, the browser blocks automatic loading, so a one-time manual selection is needed.',
       dpFail: 'DotPad connection failed{e} — check the device is on and in range, then try again.',
-      dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins, aspect preserved). Device keys: ◀▶ pan left/right (page prev/next at full view), F1/F2 up/down, F3/F4 zoom out/in.',
+      dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins, aspect preserved). Starts at ×1.5, the most readable setting on the device. Keys: ◀▶ pan left/right (page prev/next at full view), F1/F2 up/down, F3/F4 zoom out/in.',
       dpKeysRb: 'DotPad connected — device keys: ◀▶ previous/next item, F1 resend, F2 first item, F3/F4 back/forward 10.',
       dl: { svg: 'SVG (embosser/Monarch)', pdf: 'PDF (print)', dtms: 'DotPad .dtms', brf: 'BRF key page', json: 'Save spec JSON', load: 'Open spec JSON' }
     },
@@ -105,7 +105,7 @@
       dpNoSdk: 'DotPad SDK를 불러오지 못했습니다. DotPadSDK-3.0.0.js 파일을 준비한 뒤 "DotPad 연결"을 다시 누르세요 — 파일 선택 창이 열립니다 (라이선스상 내장 불가).',
       dpPickSdk: '📂 방금 열린 창에서 DotPadSDK-3.0.0.js 파일을 선택해주세요. 파일을 디스크에서 직접 열면 브라우저가 자동 불러오기를 막아서, 한 번만 직접 선택이 필요합니다.',
       dpFail: 'DotPad 연결 실패{e} — 기기 전원과 거리를 확인하고 다시 시도하세요.',
-      dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀, 비율 유지). 기기 키: ◀▶ 좌우 이동(전체보기에선 이전/다음 페이지), F1/F2 위/아래, F3/F4 축소/확대.',
+      dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀, 비율 유지). 실기기에서 가장 잘 읽히는 ×1.5로 시작합니다. 기기 키: ◀▶ 좌우 이동(전체보기에선 이전/다음 페이지), F1/F2 위/아래, F3/F4 축소/확대.',
       dpKeysRb: 'DotPad 연결됨 — 기기 키: ◀▶ 이전/다음 항목, F1 재전송, F2 처음으로, F3/F4 10개 뒤로/앞으로.',
       dl: { svg: 'SVG (엠보서/Monarch)', pdf: 'PDF (인쇄)', dtms: 'DotPad .dtms', brf: 'BRF 키 페이지', json: '스펙 저장 (JSON)', load: '스펙 불러오기' }
     }
@@ -549,7 +549,7 @@
     state.tpl = tpl; state.loadedSpec = null; state.editingPage = null;   // 시퀀스(pages)는 유지 — 여러 템플릿을 섞어 레슨 구성
     state.labels = []; state.dimOverrides = {}; state.userDims = []; state.pendingDimPt = null; state.dimHidden = {};
     state.titleOverride = null; state.dimUnit = null; state.leaderOverrides = {};
-    state.dpView = { zoom: 1, cx: null, cy: null };   // 새 도면은 전체보기부터
+    state.dpView = { zoom: DP_DEFAULT_ZOOM, cx: null, cy: null };   // 새 도면도 기본 배율부터
     renderLabelList(); renderSeqList();
     renderGallery(); renderForm(); update();
   }
@@ -1369,6 +1369,7 @@
   var _dpFlushT = null;
   var DP_W = 60, DP_H = 40, DP_AR = DP_W / DP_H;      // 그래픽 핀 60×40
   var DP_ZOOMS = [1, 1.5, 2, 3, 4, 6];
+  var DP_DEFAULT_ZOOM = 1.5;   // 실기기 검증: 전체보기(×1)는 선이 뭉개져 ×1.5가 가장 안정적
 
   /* 기기 화면에 대응하는 페이지 영역(mm). zoom 1 = 페이지 전체가 화면 비율에 맞게 들어감 */
   function dpViewport() {

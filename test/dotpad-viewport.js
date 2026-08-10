@@ -35,15 +35,23 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await page.waitForFunction(() => DOTPAD.BLE.readyCount() === 1);
   await sleep(1300);
 
-  // ── 1. 전체보기: 비율 유지(60:40), 페이지 전체 포함 ──
+  // ── 1. 기본 배율 = ×1.5 (실기기에서 가장 안정적으로 읽히는 값) ──
+  const def = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState() }));
+  ok('default zoom is ×1.5 on connect', /×1\.5/.test(def.geo.label), def.geo.label);
+  ok('viewport frame shown on preview when connected', def.geo.shown && def.geo.bw > 0, JSON.stringify(def.geo));
+  ok('default frame is smaller than the page (magnified)', def.geo.bw < def.geo.sw, `${Math.round(def.geo.bw)} vs ${Math.round(def.geo.sw)}`);
+  ok('device has content at default zoom', def.state.some(r => r !== '0'.repeat(60)));
+
+  // ── 2. F3로 전체보기(×1): 비율 유지(60:40), 페이지 전체 포함 ──
+  await page.evaluate(() => window.__key('KeyFunction3'));
+  await sleep(900);
   const fit = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState() }));
-  ok('viewport frame shown on preview when connected', fit.geo.shown && fit.geo.bw > 0, JSON.stringify(fit.geo));
+  ok('F3 from default reaches full view (×1)', !/\s×[\d.]+$/.test(fit.geo.label), fit.geo.label);
   ok('frame aspect = 60:40 (no stretching to device grid)', Math.abs(fit.geo.bw / fit.geo.bh - 1.5) < 0.02, (fit.geo.bw / fit.geo.bh).toFixed(3));
   ok('fit view covers the whole page (letterboxed)', fit.geo.bw >= fit.geo.sw - 1 && fit.geo.bh >= fit.geo.sh - 1,
     `frame ${Math.round(fit.geo.bw)}×${Math.round(fit.geo.bh)} vs page ${Math.round(fit.geo.sw)}×${Math.round(fit.geo.sh)}`);
-  ok('device has content at fit', fit.state.some(r => r !== '0'.repeat(60)));
 
-  // ── 2. F4 확대 → 프레임 축소, 기기 내용 변경 ──
+  // ── 3. F4 확대 → 프레임 축소, 기기 내용 변경 ──
   await page.evaluate(() => window.__key('KeyFunction4'));
   await sleep(900);
   const z2 = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState() }));
@@ -54,7 +62,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const inkCount = s => s.join('').split('').filter(c => c !== '0').length;
   ok('zoomed view has more ink (magnified strokes)', inkCount(z2.state) > inkCount(fit.state), inkCount(fit.state) + ' → ' + inkCount(z2.state));
 
-  // ── 3. 이동: 팬 우/좌, F2 아래 / F1 위 ──
+  // ── 4. 이동: 팬 우/좌, F2 아래 / F1 위 ──
   await page.evaluate(() => window.__key('KeyFunction4'));   // ×2
   await sleep(700);
   const base = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState() }));
@@ -79,13 +87,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const back = await page.evaluate(() => window.__geo());
   ok('pan ◀ moves frame back left', back.bx < right.geo.bx - 20 && back.bx >= -2, `${Math.round(right.geo.bx)} → ${Math.round(back.bx)}`);
 
-  // ── 4. 프레임은 페이지 밖으로 나가지 않는다 (클램프) ──
+  // ── 5. 프레임은 페이지 밖으로 나가지 않는다 (클램프) ──
   for (let i = 0; i < 8; i++) { await page.evaluate(() => window.__key('PanningRight')); await sleep(120); }
   await sleep(700);
   const edge = await page.evaluate(() => window.__geo());
   ok('frame clamps at page edge', edge.bx + edge.bw <= edge.sw + 2, `right edge ${Math.round(edge.bx + edge.bw)} vs page ${Math.round(edge.sw)}`);
 
-  // ── 5. 확대 중 텍스트 라인 = 현재 위치 안내 ──
+  // ── 6. 확대 중 텍스트 라인 = 현재 위치 안내 ──
   const txt = await page.evaluate(() => DOTPAD.BLE.devs[0].lastText);
   const decode = hex => {   // 텍스트 셀 hex → 점 번호
     const out = [];
@@ -99,7 +107,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const cells = decode(txt || '').filter(c => c.length);
   ok('text line carries position info while zoomed', cells.length >= 3, JSON.stringify(cells.slice(0, 5)));
 
-  // ── 6. 축소 한계 / 확대 한계 ──
+  // ── 7. 축소 한계 / 확대 한계 ──
   for (let i = 0; i < 6; i++) { await page.evaluate(() => window.__key('KeyFunction3')); await sleep(120); }
   await sleep(700);
   const zmin = await page.evaluate(() => ({ zoom: window.__geo().label, geo: window.__geo() }));
@@ -109,7 +117,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const zmax = await page.evaluate(() => window.__geo());
   ok('zoom stops at max ×6', /×6/.test(zmax.label), zmax.label);
 
-  // ── 7. 규정집 모드: 키 배치가 항목 이동 (F3/F4 = ±10) ──
+  // ── 8. 규정집 모드: 키 배치가 항목 이동 (F3/F4 = ±10) ──
   await page.click('#gallery .gcat:has-text("Documents")');
   await page.click('#gallery .card:has-text("Braille Document Converter")');
   await page.click('#form .genBtn');
