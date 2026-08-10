@@ -1525,14 +1525,29 @@
       return txt ? DOTPAD.textLineHex(TGIL.translate(txt, code).slice(0, 20)) : null;
     } catch (e) { return null; }
   }
-  /* 기기용 SVG: 점자와 묵자를 뺀 "도형만".
-   * 점자를 래스터라이즈하면 도트(지름 1.44mm)가 핀 경계에 걸쳐 2핀으로 번지고 옆 도트와 붙어
-   * 판독이 불가능해진다(실기기 확인). 점자는 아래 stampBraille이 핀에 직접 찍는다.
-   * 묵자는 눈으로 보는 글자라 핀으로 내보내면 잡음일 뿐이라 함께 제거. */
-  function svgForDevice(svg) {
+  /* 기기용 SVG를 두 층으로 분리한다.
+   * - 점자: 래스터라이즈하면 도트가 핀 경계에 번져 붙으므로 제거 후 stampBraille이 직접 찍는다
+   * - 묵자: 눈으로 보는 글자라 핀으로는 잡음
+   * - 'fill' 층: 빗금 텍스처(url(#tx-…))를 solid로 → 기기에서 "채워진 면"은 핀이 다 솟는다
+   * - 'line' 층: 선·점 심볼
+   * 두 층을 XOR하면 채운 면 안의 구분선이 홈이 된다 — 솟은 면 위의 솟은 선은 손으로 못 느끼므로
+   * 구분선은 반드시 내려가 있어야 칸이 세어진다(실기기 피드백). */
+  var DEV_TAG = /<(rect|circle|ellipse|line|polyline|polygon|path)\b[^>]*\/>/g;
+  function deviceLayer(svg, want, minStrokeMm) {
     return svg
-      .replace(/<g fill="#000">[\s\S]*?<\/g>/g, '')
-      .replace(/<text class="inktxt"[\s\S]*?<\/text>/g, '');
+      .replace(/<g fill="#000">[\s\S]*?<\/g>/g, '')          // 점자
+      .replace(/<text class="inktxt"[\s\S]*?<\/text>/g, '')  // 묵자
+      .replace(DEV_TAG, function (tag) {
+        if (/width="100%"/.test(tag)) return tag;            // 배경
+        var isTexture = /fill="url\(#/.test(tag);
+        if (want === 'fill') return isTexture ? tag.replace(/fill="url\(#[^"]*\)"/, 'fill="#000"') : '';
+        if (isTexture) return '';
+        if (!/stroke="#000"/.test(tag) && !/fill="#000"/.test(tag)) return '';
+        // 종이용 얇은 선(1mm 등)은 핀 격자에서 사라진다 — 기기에서는 최소 1핀 굵기로
+        return tag.replace(/stroke-width="([\d.]+)"/, function (m, w) {
+          return 'stroke-width="' + Math.max(parseFloat(w), minStrokeMm || 0) + '"';
+        });
+      });
   }
   /* 점자를 기기 핀 격자에 직접 찍는다 — 셀 전진 3핀, 도트 간격 1핀 (기기 점자 규격) */
   function dpLabels() {
@@ -1571,19 +1586,36 @@
       });
     });
   }
-  function dpRasterize(svg, vp, cb) {
+  function rasterLayer(src, cw, chh, cb) {
     var img = new Image();
-    var SS = 4, cw = DP_W * SS, chh = DP_H * SS;
     img.onload = function () {
       var cv = document.createElement('canvas'); cv.width = cw; cv.height = chh;
       var ctx = cv.getContext('2d');
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, chh);
       ctx.drawImage(img, 0, 0, cw, chh);
-      var grid = EXPORTERS.gridFromImageData(ctx.getImageData(0, 0, cw, chh).data, cw, chh, DP_W, DP_H);
-      if (dpBrailleLegible()) stampBraille(grid, vp);   // 판독 가능한 배율에서만 점자를 얹는다
-      cb(grid);
+      cb(EXPORTERS.gridFromImageData(ctx.getImageData(0, 0, cw, chh).data, cw, chh, DP_W, DP_H));
     };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgCrop(svgForDevice(svg), vp, cw, chh));
+    img.onerror = function () { cb(null); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+  }
+  function dpRasterize(svg, vp, cb) {
+    var SS = 4, cw = DP_W * SS, chh = DP_H * SS;
+    var minStroke = vp.w / DP_W;                      // 1핀에 해당하는 mm
+    rasterLayer(svgCrop(deviceLayer(svg, 'fill'), vp, cw, chh), cw, chh, function (fg) {
+      rasterLayer(svgCrop(deviceLayer(svg, 'line', minStroke), vp, cw, chh), cw, chh, function (lg) {
+        var grid = [];
+        for (var y = 0; y < DP_H; y++) {
+          var row = new Array(DP_W);
+          for (var x = 0; x < DP_W; x++) {
+            var f = fg && fg[y] ? fg[y][x] : 0, l = lg && lg[y] ? lg[y][x] : 0;
+            row[x] = (f ^ l) ? 1 : 0;      // 채운 면 위의 선 = 홈, 빈 배경 위의 선 = 솟음
+          }
+          grid.push(row);
+        }
+        if (dpBrailleLegible()) stampBraille(grid, vp);   // 판독 가능한 배율에서만 점자를 얹는다
+        cb(grid);
+      });
+    });
   }
   function dpZoomBy(d) {
     var i = DP_SCALES.indexOf(state.dpView.zoom);
