@@ -35,35 +35,38 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await page.waitForFunction(() => DOTPAD.BLE.readyCount() === 1);
   await sleep(1300);
 
-  // ── 1. 기본 배율 = ×1.5 (실기기에서 가장 안정적으로 읽히는 값) ──
-  const def = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState() }));
-  ok('default zoom is ×1.5 on connect', /×1\.5/.test(def.geo.label), def.geo.label);
+  // ── 1. 기본 배율 = 1:1 (점자 도트 1개 = 핀 1개, 판독 가능한 유일한 실척) ──
+  const def = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState(), info: window.__dpInfo() }));
+  ok('default scale is 1:1 (actual size)', /1:1/.test(def.geo.label) && def.info.scale === 1, def.geo.label);
+  ok('1:1 means one pin per braille dot pitch (2.34mm)', Math.abs(def.info.mmPerPin - 2.34) < 0.01, def.info.mmPerPin.toFixed(2) + 'mm/pin');
   ok('viewport frame shown on preview when connected', def.geo.shown && def.geo.bw > 0, JSON.stringify(def.geo));
-  ok('default frame is smaller than the page (magnified)', def.geo.bw < def.geo.sw, `${Math.round(def.geo.bw)} vs ${Math.round(def.geo.sw)}`);
-  ok('device has content at default zoom', def.state.some(r => r !== '0'.repeat(60)));
+  ok('default frame is smaller than the page (device is physically smaller)', def.geo.bw < def.geo.sw, `${Math.round(def.geo.bw)} vs ${Math.round(def.geo.sw)}`);
+  ok('device has content at default scale', def.state.some(r => r !== '0'.repeat(60)));
+  ok('frame aspect = 60:40 (no stretching to device grid)', Math.abs(def.geo.bw / def.geo.bh - 1.5) < 0.02, (def.geo.bw / def.geo.bh).toFixed(3));
 
-  // ── 2. F3로 전체보기(×1): 비율 유지(60:40), 페이지 전체 포함 ──
+  // ── 2. F3 두 번 → ½ → 전체보기 ──
+  await page.evaluate(() => window.__key('KeyFunction3'));
+  await sleep(800);
+  const half = await page.evaluate(() => ({ geo: window.__geo(), info: window.__dpInfo() }));
+  ok('F3 → ½ scale', half.info.scale === 0.5 && /½/.test(half.geo.label), half.geo.label);
+  ok('½ is flagged as unreadable for braille', half.info.legible === false, half.info.mmPerPin.toFixed(2) + 'mm/pin');
   await page.evaluate(() => window.__key('KeyFunction3'));
   await sleep(900);
-  const fit = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState() }));
-  ok('F3 from default reaches full view (×1)', !/\s×[\d.]+$/.test(fit.geo.label), fit.geo.label);
-  ok('frame aspect = 60:40 (no stretching to device grid)', Math.abs(fit.geo.bw / fit.geo.bh - 1.5) < 0.02, (fit.geo.bw / fit.geo.bh).toFixed(3));
+  const fit = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState(), info: window.__dpInfo() }));
+  ok('F3 again → full page view', fit.info.scale === 'fit', fit.geo.label);
   ok('fit view covers the whole page (letterboxed)', fit.geo.bw >= fit.geo.sw - 1 && fit.geo.bh >= fit.geo.sh - 1,
     `frame ${Math.round(fit.geo.bw)}×${Math.round(fit.geo.bh)} vs page ${Math.round(fit.geo.sw)}×${Math.round(fit.geo.sh)}`);
+  ok('fit keeps 60:40 aspect', Math.abs(fit.geo.bw / fit.geo.bh - 1.5) < 0.02, (fit.geo.bw / fit.geo.bh).toFixed(3));
 
   // ── 3. F4 확대 → 프레임 축소, 기기 내용 변경 ──
   await page.evaluate(() => window.__key('KeyFunction4'));
   await sleep(900);
   const z2 = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState() }));
   ok('F4 zooms in: frame shrinks', z2.geo.bw < fit.geo.bw * 0.75, `${Math.round(fit.geo.bw)} → ${Math.round(z2.geo.bw)}`);
-  ok('F4 zoom label shows magnification', /×1\.5/.test(z2.geo.label), z2.geo.label);
-  ok('zoomed frame keeps 60:40 aspect', Math.abs(z2.geo.bw / z2.geo.bh - 1.5) < 0.02, (z2.geo.bw / z2.geo.bh).toFixed(3));
   ok('device content changes on zoom', JSON.stringify(z2.state) !== JSON.stringify(fit.state));
-  const inkCount = s => s.join('').split('').filter(c => c !== '0').length;
-  ok('zoomed view has more ink (magnified strokes)', inkCount(z2.state) > inkCount(fit.state), inkCount(fit.state) + ' → ' + inkCount(z2.state));
 
-  // ── 4. 이동: 팬 우/좌, F2 아래 / F1 위 ──
-  await page.evaluate(() => window.__key('KeyFunction4'));   // ×2
+  // ── 4. 이동: 팬 우/좌, F2 아래 / F1 위 (1:1에서) ──
+  await page.evaluate(() => window.__key('KeyFunction4'));   // 1:1
   await sleep(700);
   const base = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState() }));
   await page.evaluate(() => window.__key('PanningRight'));
@@ -110,12 +113,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // ── 7. 축소 한계 / 확대 한계 ──
   for (let i = 0; i < 6; i++) { await page.evaluate(() => window.__key('KeyFunction3')); await sleep(120); }
   await sleep(700);
-  const zmin = await page.evaluate(() => ({ zoom: window.__geo().label, geo: window.__geo() }));
-  ok('F3 zooms back out to full view', !/\s×[\d.]+$/.test(zmin.zoom) && zmin.geo.bw >= zmin.geo.sw - 1, zmin.zoom);
+  const zmin = await page.evaluate(() => ({ geo: window.__geo(), info: window.__dpInfo() }));
+  ok('F3 stops at full page view', zmin.info.scale === 'fit' && zmin.geo.bw >= zmin.geo.sw - 1, zmin.geo.label);
   for (let i = 0; i < 10; i++) { await page.evaluate(() => window.__key('KeyFunction4')); await sleep(90); }
   await sleep(700);
-  const zmax = await page.evaluate(() => window.__geo());
-  ok('zoom stops at max ×6', /×6/.test(zmax.label), zmax.label);
+  const zmax = await page.evaluate(() => ({ geo: window.__geo(), info: window.__dpInfo() }));
+  ok('zoom stops at max 2×', zmax.info.scale === 2 && /2×/.test(zmax.geo.label), zmax.geo.label);
 
   // ── 8. 규정집 모드: 키 배치가 항목 이동 (F3/F4 = ±10) ──
   await page.click('#gallery .gcat:has-text("Documents")');

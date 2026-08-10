@@ -12,7 +12,7 @@
     dragging: null, didDrag: false, dimHidden: {}, pendingDimEl: null,
     pages: [], editingPage: null,
     titleOverride: null, dimUnit: null, leaderOverrides: {}, pendingLeaderEl: null,
-    dpView: { zoom: 1.5, cx: null, cy: null }   // ×1.5 = 실기기에서 가장 안정적으로 읽히는 기본 배율
+    dpView: { zoom: 1, cx: null, cy: null }   // 1:1 = 점자 도트 1개가 핀 1개 (판독 가능한 유일한 배율)
   };
 
   /* 점자 규정집 변환기 가상 템플릿 */
@@ -70,7 +70,9 @@
       dpNoSdk: 'Could not load the DotPad SDK. Have DotPadSDK-3.0.0.js ready (it cannot be embedded for license reasons) and click "Connect DotPad" again — a file picker will ask for it.',
       dpPickSdk: '📂 Select the DotPadSDK-3.0.0.js file in the dialog that just opened. When this file is opened directly from disk, the browser blocks automatic loading, so a one-time manual selection is needed.',
       dpFail: 'DotPad connection failed{e} — check the device is on and in range, then try again.',
-      dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins, aspect preserved). Starts at ×1.5, the most readable setting on the device. Keys: ◀▶ pan left/right (page prev/next at full view), F1/F2 up/down, F3/F4 zoom out/in.',
+      dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins). Starts at 1:1, where one braille dot lands on one pin. Keys: ◀▶ pan left/right (page prev/next at full view), F1/F2 up/down, F3/F4 zoom out/in.',
+      dpFit: 'full page', dpOneToOne: '1:1 actual size', dpNoBrl: '⚠ braille unreadable',
+      dpBrlWarn: '⚠ At this zoom one pin covers {mm}mm, but braille dots are 2.34mm apart — dots merge and the labels cannot be read by touch. Press F4 to reach 1:1; the shape is still useful for orientation at this zoom.',
       dpKeysRb: 'DotPad connected — device keys: ◀▶ previous/next item, F1 resend, F2 first item, F3/F4 back/forward 10.',
       dl: { svg: 'SVG (embosser/Monarch)', pdf: 'PDF (print)', dtms: 'DotPad .dtms', brf: 'BRF key page', json: 'Save spec JSON', load: 'Open spec JSON' }
     },
@@ -105,7 +107,9 @@
       dpNoSdk: 'DotPad SDK를 불러오지 못했습니다. DotPadSDK-3.0.0.js 파일을 준비한 뒤 "DotPad 연결"을 다시 누르세요 — 파일 선택 창이 열립니다 (라이선스상 내장 불가).',
       dpPickSdk: '📂 방금 열린 창에서 DotPadSDK-3.0.0.js 파일을 선택해주세요. 파일을 디스크에서 직접 열면 브라우저가 자동 불러오기를 막아서, 한 번만 직접 선택이 필요합니다.',
       dpFail: 'DotPad 연결 실패{e} — 기기 전원과 거리를 확인하고 다시 시도하세요.',
-      dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀, 비율 유지). 실기기에서 가장 잘 읽히는 ×1.5로 시작합니다. 기기 키: ◀▶ 좌우 이동(전체보기에선 이전/다음 페이지), F1/F2 위/아래, F3/F4 축소/확대.',
+      dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀). 점자 도트 1개가 핀 1개에 떨어지는 1:1로 시작합니다. 기기 키: ◀▶ 좌우 이동(전체보기에선 이전/다음 페이지), F1/F2 위/아래, F3/F4 축소/확대.',
+      dpFit: '전체보기', dpOneToOne: '1:1 실제 크기', dpNoBrl: '⚠ 점자 판독 불가',
+      dpBrlWarn: '⚠ 이 배율에서는 핀 1개가 {mm}mm를 맡는데 점자 도트 간격은 2.34mm입니다 — 도트가 한 핀에 뭉쳐 레이블을 손으로 읽을 수 없습니다. F4로 1:1까지 확대하세요. (이 배율은 전체 형태 파악용으로만 쓰세요.)',
       dpKeysRb: 'DotPad 연결됨 — 기기 키: ◀▶ 이전/다음 항목, F1 재전송, F2 처음으로, F3/F4 10개 뒤로/앞으로.',
       dl: { svg: 'SVG (엠보서/Monarch)', pdf: 'PDF (인쇄)', dtms: 'DotPad .dtms', brf: 'BRF 키 페이지', json: '스펙 저장 (JSON)', load: '스펙 불러오기' }
     }
@@ -549,7 +553,7 @@
     state.tpl = tpl; state.loadedSpec = null; state.editingPage = null;   // 시퀀스(pages)는 유지 — 여러 템플릿을 섞어 레슨 구성
     state.labels = []; state.dimOverrides = {}; state.userDims = []; state.pendingDimPt = null; state.dimHidden = {};
     state.titleOverride = null; state.dimUnit = null; state.leaderOverrides = {};
-    state.dpView = { zoom: DP_DEFAULT_ZOOM, cx: null, cy: null };   // 새 도면도 기본 배율부터
+    state.dpView = { zoom: DP_DEFAULT_SCALE, cx: null, cy: null };   // 새 도면도 기본 배율부터
     renderLabelList(); renderSeqList();
     renderGallery(); renderForm(); update();
   }
@@ -1368,17 +1372,23 @@
   var dpNav = { idx: 0 };
   var _dpFlushT = null;
   var DP_W = 60, DP_H = 40, DP_AR = DP_W / DP_H;      // 그래픽 핀 60×40
-  var DP_ZOOMS = [1, 1.5, 2, 3, 4, 6];
-  var DP_DEFAULT_ZOOM = 1.5;   // 실기기 검증: 전체보기(×1)는 선이 뭉개져 ×1.5가 가장 안정적
+  /* 배율은 "핀 1개가 맡는 페이지 길이(mm)" 기준.
+   * DotPad 핀 간격 = 점자 도트 간격이므로, 점자 도트 1개 → 핀 1개(=1:1)일 때만 점자가 읽힌다.
+   * 실기기 문제: 전체보기는 핀 하나가 4~7mm를 맡아 도트 2~3개가 한 핀에 뭉개져 판독 불가. */
+  var DP_PIN = TGIL.PROFILE.braille.dotGap;           // 2.34mm — 1:1 기준
+  var DP_SCALES = ['fit', 0.5, 1, 2];                 // 전체 · ½ · 1:1 · 2배
+  var DP_DEFAULT_SCALE = 1;                           // 기본 = 1:1 (점자가 읽히는 유일한 배율)
 
-  /* 기기 화면에 대응하는 페이지 영역(mm). zoom 1 = 페이지 전체가 화면 비율에 맞게 들어감 */
+  /* 기기 화면에 대응하는 페이지 영역(mm) */
   function dpViewport() {
     var pg = (state.layout && state.layout.page) || TGIL.PROFILE.page;
-    var fitW, fitH;
-    if (pg.w / pg.h > DP_AR) { fitW = pg.w; fitH = pg.w / DP_AR; }   // 가로가 길면 가로 기준
-    else { fitH = pg.h; fitW = pg.h * DP_AR; }                        // 세로가 길면 세로 기준 (비율 유지 = 왜곡 없음)
-    var z = state.dpView.zoom || 1;
-    var w = fitW / z, h = fitH / z;
+    var s = state.dpView.zoom, w, h;
+    if (s === 'fit') {                                                // 전체보기: 비율 유지 레터박스
+      if (pg.w / pg.h > DP_AR) { w = pg.w; h = pg.w / DP_AR; }
+      else { h = pg.h; w = pg.h * DP_AR; }
+    } else {                                                          // 실척 기준: 핀 1개 = DP_PIN/s mm
+      w = DP_W * DP_PIN / s; h = DP_H * DP_PIN / s;
+    }
     var cx = state.dpView.cx == null ? pg.w / 2 : state.dpView.cx;
     var cy = state.dpView.cy == null ? pg.h / 2 : state.dpView.cy;
     if (w < pg.w) cx = Math.max(w / 2, Math.min(pg.w - w / 2, cx)); else cx = pg.w / 2;
@@ -1414,8 +1424,16 @@
     box.style.top = Math.round(sr.top - pr.top + vp.y * sy) + 'px';
     box.style.width = Math.round(vp.w * sx) + 'px';
     box.style.height = Math.round(vp.h * sy) + 'px';
-    box.textContent = 'DotPad 60×40' + (state.dpView.zoom > 1 ? '  ×' + state.dpView.zoom : '');
+    box.textContent = 'DotPad 60×40  ' + dpScaleLabel() + (dpBrailleLegible() ? '' : '  ' + t('dpNoBrl'));
+    box.classList.toggle('warn', !dpBrailleLegible());
   }
+  function dpScaleLabel() {
+    var s = state.dpView.zoom;
+    return s === 'fit' ? t('dpFit') : (s === 1 ? t('dpOneToOne') : (s < 1 ? '½' : s + '×'));
+  }
+  /* 점자 판독 가능 여부: 핀 1개가 맡는 mm가 점자 도트 간격 이하일 때만 도트가 핀에 1:1로 떨어진다 */
+  function dpMmPerPin() { var vp = dpViewport(); return vp.w / DP_W; }
+  function dpBrailleLegible() { return dpMmPerPin() <= DP_PIN * 1.05; }
   function dpConnect() {
     var B = window.DOTPAD && DOTPAD.BLE;
     if (!B) return;
@@ -1481,15 +1499,61 @@
   function dpTextHex(vp) {
     try {
       var code = (state.spec && state.spec.brailleCode) || 'ueb', txt;
-      if (state.dpView.zoom > 1) {
+      if (state.dpView.zoom !== "fit") {
         var col = Math.floor(vp.x / vp.w + 0.5) + 1, row = Math.floor(vp.y / vp.h + 0.5) + 1;
         var cols = Math.max(1, Math.ceil(vp.page.w / vp.w)), rows = Math.max(1, Math.ceil(vp.page.h / vp.h));
-        txt = 'x' + state.dpView.zoom + ' ' + row + '-' + col + '/' + rows + '-' + cols;
+        txt = row + "-" + col + "/" + rows + "-" + cols;
       } else {
         txt = state.spec && state.spec.title && state.spec.title.text;
       }
       return txt ? DOTPAD.textLineHex(TGIL.translate(txt, code).slice(0, 20)) : null;
     } catch (e) { return null; }
+  }
+  /* 기기용 SVG: 점자와 묵자를 뺀 "도형만".
+   * 점자를 래스터라이즈하면 도트(지름 1.44mm)가 핀 경계에 걸쳐 2핀으로 번지고 옆 도트와 붙어
+   * 판독이 불가능해진다(실기기 확인). 점자는 아래 stampBraille이 핀에 직접 찍는다.
+   * 묵자는 눈으로 보는 글자라 핀으로 내보내면 잡음일 뿐이라 함께 제거. */
+  function svgForDevice(svg) {
+    return svg
+      .replace(/<g fill="#000">[\s\S]*?<\/g>/g, '')
+      .replace(/<text class="inktxt"[\s\S]*?<\/text>/g, '');
+  }
+  /* 점자를 기기 핀 격자에 직접 찍는다 — 셀 전진 3핀, 도트 간격 1핀 (기기 점자 규격) */
+  function dpLabels() {
+    var out = [];
+    (state.spec && state.spec.elements || []).forEach(function (e) {
+      if ((e.type === 'dimension' || e.type === 'leader') && e._labelMm && e._cells && e._cells.length)
+        out.push({ cells: e._cells, at: e._labelMm });
+    });
+    var L = state.layout;
+    if (L && L.titleBox && state.spec && state.spec.title && state.spec.title.text) {
+      try {
+        out.push({
+          cells: TGIL.translate(state.spec.title.text, state.spec.brailleCode || 'ueb'),
+          at: [L.titleBox.cx, L.titleBox.y0 + L.titleBox.h / 2]
+        });
+      } catch (err) {}
+    }
+    return out;
+  }
+  function stampBraille(grid, vp) {
+    var pxmm = DP_W / vp.w, pymm = DP_H / vp.h;
+    dpLabels().forEach(function (lb) {
+      var wPins = lb.cells.length * 3 - 1;
+      var x0 = Math.round((lb.at[0] - vp.x) * pxmm - wPins / 2);
+      var y0 = Math.round((lb.at[1] - vp.y) * pymm - 1);      // 3핀 높이의 중앙
+      if (x0 + wPins < 0 || x0 >= DP_W || y0 + 3 < 0 || y0 >= DP_H) return;   // 화면 밖
+      for (var cy = y0 - 1; cy <= y0 + 3; cy++)               // 점자 주변 여백 확보 (선과 겹침 방지)
+        for (var cx = x0 - 1; cx <= x0 + wPins + 1; cx++)
+          if (cy >= 0 && cy < DP_H && cx >= 0 && cx < DP_W) grid[cy][cx] = 0;
+      lb.cells.forEach(function (cell, ci) {
+        cell.forEach(function (d) {
+          var col = d >= 4 ? 1 : 0, row = (d - 1) % 3;
+          var px = x0 + ci * 3 + col, py = y0 + row;
+          if (px >= 0 && px < DP_W && py >= 0 && py < DP_H) grid[py][px] = 1;
+        });
+      });
+    });
   }
   function dpRasterize(svg, vp, cb) {
     var img = new Image();
@@ -1499,17 +1563,29 @@
       var ctx = cv.getContext('2d');
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, chh);
       ctx.drawImage(img, 0, 0, cw, chh);
-      cb(EXPORTERS.gridFromImageData(ctx.getImageData(0, 0, cw, chh).data, cw, chh, DP_W, DP_H));
+      var grid = EXPORTERS.gridFromImageData(ctx.getImageData(0, 0, cw, chh).data, cw, chh, DP_W, DP_H);
+      if (dpBrailleLegible()) stampBraille(grid, vp);   // 판독 가능한 배율에서만 점자를 얹는다
+      cb(grid);
     };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgCrop(svg, vp, cw, chh));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgCrop(svgForDevice(svg), vp, cw, chh));
   }
   function dpZoomBy(d) {
-    var i = DP_ZOOMS.indexOf(state.dpView.zoom);
-    if (i < 0) i = 0;
-    var n = Math.max(0, Math.min(DP_ZOOMS.length - 1, i + d));
+    var i = DP_SCALES.indexOf(state.dpView.zoom);
+    if (i < 0) i = DP_SCALES.indexOf(DP_DEFAULT_SCALE);
+    var n = Math.max(0, Math.min(DP_SCALES.length - 1, i + d));
     if (n === i) return;
-    state.dpView.zoom = DP_ZOOMS[n];
-    dpSchedule(); dpOverlay();
+    state.dpView.zoom = DP_SCALES[n];
+    dpSchedule(); dpOverlay(); dpReport();
+  }
+  /* 점자가 뭉개지는 배율이면 제작자에게 경고 (산출물 사용자는 못 보는 문제라 화면에서 알려야 한다) */
+  function dpReport() {
+    var li = $('#dpWarn');
+    if (!li) { li = document.createElement('li'); li.id = 'dpWarn'; }
+    if (dpConnected() && !rbMode() && !dpBrailleLegible()) {
+      li.textContent = t('dpBrlWarn').replace('{mm}', (Math.round(dpMmPerPin() * 10) / 10));
+      li.style.color = '#a05a00';
+      if (!li.parentNode) $('#report').appendChild(li);
+    } else if (li.parentNode) li.parentNode.removeChild(li);
   }
   function dpPan(dx, dy) {
     var vp = dpViewport();
@@ -1538,12 +1614,23 @@
     if (key === 'KeyFunction2') { dpPan(0, 1); return; }
     if (key === 'PanningLeft' || key === 'PanningRight') {
       var d = key === 'PanningRight' ? 1 : -1;
-      if (state.dpView.zoom > 1) { dpPan(d, 0); return; }
+      if (state.dpView.zoom !== 'fit') { dpPan(d, 0); return; }   // 전체보기가 아니면 화면 이동
       if (state.pages.length) {   // 전체보기 상태에서는 좌우 = 이전/다음 페이지
         var i = (state.editingPage == null ? (d > 0 ? -1 : state.pages.length) : state.editingPage) + d;
         if (i >= 0 && i < state.pages.length) openPage(i);
       }
     }
+  }
+
+  /* 검증 훅 (시뮬레이터 하네스에서 뷰포트를 직접 지정해 기기 출력 점형을 비교한다) */
+  if (typeof window !== 'undefined') {
+    window.__setView = function (scale, cx, cy) {
+      state.dpView = { zoom: scale, cx: cx, cy: cy };
+      dpSchedule(); dpOverlay(); dpReport();
+    };
+    window.__dpInfo = function () {
+      return { scale: state.dpView.zoom, mmPerPin: dpMmPerPin(), legible: dpBrailleLegible(), vp: dpViewport() };
+    };
   }
 
   document.addEventListener('DOMContentLoaded', init);
