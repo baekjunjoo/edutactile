@@ -70,7 +70,7 @@
       dpNoSdk: 'Could not load the DotPad SDK. Have DotPadSDK-3.0.0.js ready (it cannot be embedded for license reasons) and click "Connect DotPad" again — a file picker will ask for it.',
       dpPickSdk: '📂 Select the DotPadSDK-3.0.0.js file in the dialog that just opened. When this file is opened directly from disk, the browser blocks automatic loading, so a one-time manual selection is needed.',
       dpFail: 'DotPad connection failed{e} — check the device is on and in range, then try again.',
-      dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins). Starts at 1:1, where one braille dot lands on one pin. Keys: ◀▶ pan left/right (page prev/next at full view), F1/F2 up/down, F3/F4 zoom out/in.',
+      dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins). Starts at 1:1, where one braille dot lands on one pin. Device keys: F1 up · F2 left · F3 right · F4 down · pan◀+F1 zoom out · pan▶+F4 zoom in · pan ◀▶ alone = previous/next page.',
       dpFit: 'full page', dpOneToOne: '1:1 actual size', dpNoBrl: '⚠ braille unreadable',
       dpLost: 'DotPad disconnected.',
       dpDiag: 'link: frames sent {sent} · keep-alive {ka} · device replies {ack} · errors {err} · drops {lost}',
@@ -111,7 +111,7 @@
       dpNoSdk: 'DotPad SDK를 불러오지 못했습니다. DotPadSDK-3.0.0.js 파일을 준비한 뒤 "DotPad 연결"을 다시 누르세요 — 파일 선택 창이 열립니다 (라이선스상 내장 불가).',
       dpPickSdk: '📂 방금 열린 창에서 DotPadSDK-3.0.0.js 파일을 선택해주세요. 파일을 디스크에서 직접 열면 브라우저가 자동 불러오기를 막아서, 한 번만 직접 선택이 필요합니다.',
       dpFail: 'DotPad 연결 실패{e} — 기기 전원과 거리를 확인하고 다시 시도하세요.',
-      dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀). 점자 도트 1개가 핀 1개에 떨어지는 1:1로 시작합니다. 기기 키: ◀▶ 좌우 이동(전체보기에선 이전/다음 페이지), F1/F2 위/아래, F3/F4 축소/확대.',
+      dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀). 점자 도트 1개가 핀 1개에 떨어지는 1:1로 시작합니다. 기기 키: F1 위 · F2 왼쪽 · F3 오른쪽 · F4 아래 · 좌패닝+F1 축소 · 우패닝+F4 확대 · 패닝 단독은 이전/다음 페이지.',
       dpFit: '전체보기', dpOneToOne: '1:1 실제 크기', dpNoBrl: '⚠ 점자 판독 불가',
       dpLost: 'DotPad 연결이 끊겼습니다.',
       dpDiag: '화면 전송 {sent} · 연결 유지 {ka} · 기기 응답 {ack} · 오류 {err} · 끊김 {lost}',
@@ -1641,19 +1641,28 @@
       dpSchedule(true);
       return;
     }
-    if (key === 'KeyFunction3') { dpZoomBy(-1); return; }
-    if (key === 'KeyFunction4') { dpZoomBy(1); return; }
+    // 방향키: F1 위 · F2 왼쪽 · F3 오른쪽 · F4 아래
     if (key === 'KeyFunction1') { dpPan(0, -1); return; }
-    if (key === 'KeyFunction2') { dpPan(0, 1); return; }
+    if (key === 'KeyFunction2') { dpPan(-1, 0); return; }
+    if (key === 'KeyFunction3') { dpPan(1, 0); return; }
+    if (key === 'KeyFunction4') { dpPan(0, 1); return; }
+    // 조합키(SDK가 단일 이벤트로 보고): 좌패닝+F1 = 축소, 우패닝+F4 = 확대
+    if (key === 'LPF1') { dpCancelPan(); dpZoomBy(-1); return; }
+    if (key === 'RPF4') { dpCancelPan(); dpZoomBy(1); return; }
+    // 패닝 단독: 이전/다음 페이지 (조합키의 앞부분일 수 있어 잠깐 뒤에 실행)
     if (key === 'PanningLeft' || key === 'PanningRight') {
       var d = key === 'PanningRight' ? 1 : -1;
-      if (state.dpView.zoom !== 'fit') { dpPan(d, 0); return; }   // 전체보기가 아니면 화면 이동
-      if (state.pages.length) {   // 전체보기 상태에서는 좌우 = 이전/다음 페이지
+      if (!state.pages.length) return;
+      dpCancelPan();
+      _dpPanT = setTimeout(function () {
+        _dpPanT = null;
         var i = (state.editingPage == null ? (d > 0 ? -1 : state.pages.length) : state.editingPage) + d;
         if (i >= 0 && i < state.pages.length) openPage(i);
-      }
+      }, 350);
     }
   }
+  var _dpPanT = null;
+  function dpCancelPan() { if (_dpPanT) { clearTimeout(_dpPanT); _dpPanT = null; } }
 
   /* 검증 훅 (시뮬레이터 하네스에서 뷰포트를 직접 지정해 기기 출력 점형을 비교한다) */
   if (typeof window !== 'undefined') {

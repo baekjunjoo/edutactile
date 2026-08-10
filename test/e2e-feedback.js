@@ -47,7 +47,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   ok('graphics mode: preview pushed to DotPad (has ink)', gfx.ink && gfx.rows === 10, JSON.stringify(gfx));
   const keysHint = await page.evaluate(() => document.querySelector('#report').textContent);
-  ok('report shows DotPad key guide (pan/zoom)', /F3\/F4 zoom|F3\/F4 축소/.test(keysHint), keysHint.slice(-90));
+  ok('report shows DotPad key guide (direction + zoom combos)',
+    /F1 up.*F4 down.*zoom out.*zoom in|F1 위.*F4 아래.*축소.*확대/.test(keysHint), keysHint.slice(-110));
 
   // ── 항목 7: 시퀀스 접기 ──
   await page.click('#addPage');

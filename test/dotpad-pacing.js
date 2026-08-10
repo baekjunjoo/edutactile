@@ -48,7 +48,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const frames = [];                       // 프레임 시작 시각 기록 (같은 tick 묶음)
     const before = window.__sim.log.length;
     for (let i = 0; i < 12; i++) {
-      window.__key(i % 2 ? 'PanningRight' : 'PanningLeft');
+      window.__key(i % 2 ? 'KeyFunction3' : 'KeyFunction2');
       await new Promise(r => setTimeout(r, 30));
     }
     await new Promise(r => setTimeout(r, 2500));
@@ -68,9 +68,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     DOTPAD.BLE.stopKeepAlive();
     await new Promise(r => setTimeout(r, 2000));      // 직전 프레임의 냉각 소진
     const g0 = window.__sim.log.filter(x => x.mode === 'GraphicMode').length;
-    window.__key('PanningRight');                     // 전 행 교체 프레임 1
+    window.__key('KeyFunction3');                     // 전 행 교체 프레임 1
     await new Promise(r => setTimeout(r, 400));
-    window.__key('PanningRight');                     // 전 행 교체 프레임 2 — 냉각 후에 나가야 함
+    window.__key('KeyFunction3');                     // 전 행 교체 프레임 2 — 냉각 후에 나가야 함
     await new Promise(r => setTimeout(r, 4000));
     const log = window.__sim.log.filter(x => x.mode === 'GraphicMode').slice(g0);
     const starts = []; let lastT = -1e9;
