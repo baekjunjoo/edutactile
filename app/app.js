@@ -73,6 +73,8 @@
       dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins). Starts at 1:1, where one braille dot lands on one pin. Keys: ◀▶ pan left/right (page prev/next at full view), F1/F2 up/down, F3/F4 zoom out/in.',
       dpFit: 'full page', dpOneToOne: '1:1 actual size', dpNoBrl: '⚠ braille unreadable',
       dpLost: 'DotPad disconnected.',
+      dpDiag: 'link: sent {sent} · ack {ack} · timeout {to} · error {err} · dropped {lost} · queue {q} · {mode}',
+      dpModeAck: 'waiting for device ACK', dpModeTimed: 'timed pacing',
       dpReconn: 'DotPad disconnected — reconnecting… (attempt {n})',
       dpReconnFail: 'Could not reconnect automatically. Turn the device off and on, then press "Connect DotPad" again.',
       dpBrlWarn: '⚠ At this zoom one pin covers {mm}mm, but braille dots are 2.34mm apart — dots merge and the labels cannot be read by touch. Press F4 to reach 1:1; the shape is still useful for orientation at this zoom.',
@@ -113,6 +115,8 @@
       dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀). 점자 도트 1개가 핀 1개에 떨어지는 1:1로 시작합니다. 기기 키: ◀▶ 좌우 이동(전체보기에선 이전/다음 페이지), F1/F2 위/아래, F3/F4 축소/확대.',
       dpFit: '전체보기', dpOneToOne: '1:1 실제 크기', dpNoBrl: '⚠ 점자 판독 불가',
       dpLost: 'DotPad 연결이 끊겼습니다.',
+      dpDiag: '전송 {sent} · 응답 {ack} · 무응답 {to} · 오류 {err} · 끊김 {lost} · 대기 {q} · {mode}',
+      dpModeAck: '기기 완료 신호 대기', dpModeTimed: '간격 기반 전송',
       dpReconn: 'DotPad 연결이 끊겨 다시 연결하는 중… ({n}번째 시도)',
       dpReconnFail: '자동 재연결에 실패했습니다. 기기를 껐다 켠 뒤 "DotPad 연결"을 다시 눌러주세요.',
       dpBrlWarn: '⚠ 이 배율에서는 핀 1개가 {mm}mm를 맡는데 점자 도트 간격은 2.34mm입니다 — 도트가 한 핀에 뭉쳐 레이블을 손으로 읽을 수 없습니다. F4로 1:1까지 확대하세요. (이 배율은 전체 형태 파악용으로만 쓰세요.)',
@@ -1459,7 +1463,8 @@
     else if (s && s.askSdk) dpMsg(t('dpPickSdk'));
     else if (s && s.reconnecting) dpMsg(t('dpReconn').replace('{n}', s.reconnecting));
     else if (s && s.lost) dpMsg(t('dpLost'));
-    dpChrome();
+    dpChrome(); dpDiag();
+    if (s && s.repaint) { dpSchedule(true); return; }   // BoardInfo 수신 → 화면 다시 그리기
     if (s && s.connected != null) {
       if (s.connected > 0) dpMsg(null);       // 성공 → 안내 제거
       update();                                // 리포트에 키 안내 반영 + 현재 화면 push (update가 dpSchedule 호출)
@@ -1476,13 +1481,16 @@
     dpOverlay();
   }
   function dpConnected() { return window.DOTPAD && DOTPAD.BLE.connected; }
-  /* 렌더(clear→draw)가 같은 턴에서 끝난 뒤 완성 프레임만 push — 빈 프레임 전송 방지 */
-  function dpSchedule() {
-    if (!dpConnected() || _dpFlushT != null) return;
+  /* 렌더(clear→draw)가 같은 턴에서 끝난 뒤 완성 프레임만 push — 빈 프레임 전송 방지.
+   * + 편집 중에는 조용해질 때까지 기다린다: 타이핑·드래그마다 기기로 쏘면 핀이 쉬지 않고
+   *   움직이고 BLE 트래픽이 계속 이어져 연결이 불안해진다. 기기 키 조작은 짧게 반응. */
+  function dpSchedule(fast) {
+    if (!dpConnected()) return;
+    if (_dpFlushT != null) clearTimeout(_dpFlushT);
     _dpFlushT = setTimeout(function () {
       _dpFlushT = null;
       if (dpConnected()) dpPushFrame();
-    }, 0);
+    }, fast ? 60 : 450);
   }
   function dpPushFrame() {
     var B = DOTPAD.BLE;
@@ -1501,6 +1509,7 @@
     dpRasterize(svg, vp, function (grid) {
       if (!dpConnected() || state.svg !== svg) return;   // 뒤늦은 프레임 폐기
       B.push(DOTPAD.encodeRows(grid), dpTextHex(vp));
+      dpDiag();
     });
     dpOverlay();
   }
@@ -1584,7 +1593,25 @@
     var n = Math.max(0, Math.min(DP_SCALES.length - 1, i + d));
     if (n === i) return;
     state.dpView.zoom = DP_SCALES[n];
-    dpSchedule(); dpOverlay(); dpReport();
+    dpSchedule(true); dpOverlay(); dpReport();
+  }
+  /* 연결 진단: 실기기에서 문제가 생겼을 때 추측 대신 근거를 남긴다 */
+  var _diagT = null;
+  function dpDiag() {
+    var el = $('#dpDiag'); if (!el) return;
+    var B = window.DOTPAD && DOTPAD.BLE;
+    if (!B || !B.connected) {
+      el.style.display = 'none';
+      if (_diagT) { clearInterval(_diagT); _diagT = null; }
+      return;
+    }
+    if (!_diagT) _diagT = setInterval(dpDiag, 1000);   // 연결 중에는 실시간 갱신
+    var s = B.stats;
+    el.style.display = '';
+    el.textContent = t('dpDiag')
+      .replace('{sent}', s.sent).replace('{ack}', s.ack).replace('{to}', s.timeout)
+      .replace('{err}', s.err).replace('{lost}', s.lost).replace('{q}', B.q.length)
+      .replace('{mode}', B.ackSeen ? t('dpModeAck') : t('dpModeTimed'));
   }
   /* 점자가 뭉개지는 배율이면 제작자에게 경고 (산출물 사용자는 못 보는 문제라 화면에서 알려야 한다) */
   function dpReport() {
@@ -1600,7 +1627,7 @@
     var vp = dpViewport();
     state.dpView.cx = vp.x + vp.w / 2 + dx * vp.w * 0.5;   // 반 화면씩 (맥락 유지)
     state.dpView.cy = vp.y + vp.h / 2 + dy * vp.h * 0.5;
-    dpSchedule(); dpOverlay();
+    dpSchedule(true); dpOverlay();
   }
   /* 키 배치 — 도면: 팬 좌/우 = 좌우 이동(확대 없으면 이전/다음 페이지), F1/F2 = 위/아래, F3/F4 = 축소/확대
    *          규정집: 팬 좌/우 = 이전/다음 항목, F1 = 재전송, F2 = 처음, F3/F4 = 10개 이전/다음 */
@@ -1614,7 +1641,7 @@
       else if (key === 'KeyFunction4') dpNav.idx += 10;
       else if (key === 'KeyFunction1') DOTPAD.BLE.devs.forEach(function (e) { e.lastSent = []; e.lastText = null; });
       dpNav.idx = Math.max(0, Math.min(dpNav.idx, Math.max(0, n - 1)));
-      dpSchedule();
+      dpSchedule(true);
       return;
     }
     if (key === 'KeyFunction3') { dpZoomBy(-1); return; }
@@ -1635,7 +1662,7 @@
   if (typeof window !== 'undefined') {
     window.__setView = function (scale, cx, cy) {
       state.dpView = { zoom: scale, cx: cx, cy: cy };
-      dpSchedule(); dpOverlay(); dpReport();
+      dpSchedule(true); dpOverlay(); dpReport();
     };
     window.__dpInfo = function () {
       return { scale: state.dpView.zoom, mmPerPin: dpMmPerPin(), legible: dpBrailleLegible(), vp: dpViewport() };

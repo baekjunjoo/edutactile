@@ -90,6 +90,58 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok('reconnected device resumes (retries reset)', back.ready === 1 && back.retries === 0, JSON.stringify(back));
 
   await browser.close();
+
+  /* ── ★ 실기기 재현: 핀 구동이 느려 완료 응답이 700ms 뒤에 오는 기기 ──
+   * 이전 줄이 끝나기 전에 다음 줄을 보내면 SDK sendCommand에 restart가 걸려 전송이 끝나지 않고
+   * 링크가 죽는다(= 사용자가 겪은 연결 끊김). 처음부터 응답하는 기기로 붙여 검증한다. */
+  {
+    const b2 = await chromium.launch();
+    const p2 = await b2.newPage({ viewport: { width: 1440, height: 900 } });
+    p2.on('pageerror', e => console.log('  [pageerror]', e.message));
+    await p2.addInitScript(`
+      Object.defineProperty(navigator, 'bluetooth', { value: {} });
+      window.__mock = (function(){ const module = { exports: {} }; ${mockSrc}; return module.exports; })();
+    `);
+    await p2.goto(DIST);
+    await p2.waitForSelector('#gallery .gcat');
+    await p2.evaluate(() => {
+      window.__ev = []; window.__outstanding = 0; window.__overlap = 0;
+      const sim = window.__mock.createMockSdk();
+      window.__sim = sim;
+      const M = sim.module, Orig = M.DotPadSDK, REFRESH = 700;
+      M.DotPadSDK = class extends Orig {
+        displayLineData(lineId, start, hex, mode, dev) {
+          if (window.__outstanding > 0) window.__overlap++;   // 이전 줄이 끝나기 전에 또 보냄 = 폭주
+          window.__outstanding++;
+          window.__ev.push({ t: Date.now(), lineId });
+          super.displayLineData(lineId, start, hex, mode, dev);
+          setTimeout(() => {                                  // 기기가 다 그린 뒤 완료 통지
+            window.__outstanding--;
+            sim.fireMessage('ResponseDisplayLineComplete', dev);
+          }, REFRESH);
+        }
+      };
+      DOTPAD.BLE.loadSDK = () => Promise.resolve(M);
+    });
+    await p2.click('#dpBtn');
+    await p2.waitForFunction(() => DOTPAD.BLE.readyCount() === 1);
+    await sleep(6000);
+    const slow = await p2.evaluate(() => {
+      const ev = window.__ev;
+      let minGap = Infinity;
+      for (let i = 1; i < ev.length; i++) minGap = Math.min(minGap, ev[i].t - ev[i - 1].t);
+      return { n: ev.length, overlap: window.__overlap, minGap: ev.length > 1 ? minGap : null,
+               ackSeen: DOTPAD.BLE.ackSeen, timedMode: DOTPAD.BLE.timedMode, stats: DOTPAD.BLE.stats };
+    });
+    ok('slow device: never sends a line before the previous one completes',
+      slow.overlap === 0, `겹친 전송 ${slow.overlap}건`);
+    ok('slow device: pacing follows the device, not the timer',
+      slow.n > 1 && slow.minGap >= 650, `전송 ${slow.n}건, 최소 간격 ${slow.minGap}ms (기기 700ms)`);
+    ok('slow device: ACK-driven flow control engaged', slow.ackSeen === true && slow.timedMode === false, JSON.stringify(slow.stats));
+    ok('slow device: no spurious timeouts', slow.stats.timeout === 0, slow.stats.timeout);
+    await b2.close();
+  }
+
   console.log(`\n결과: ${pass} 통과 / ${fail} 실패`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

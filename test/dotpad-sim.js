@@ -35,7 +35,7 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && !DO
   await page.evaluate(() => {
     window.__sim = window.__mock.createMockSdk();
     DOTPAD.BLE.loadSDK = () => Promise.resolve(window.__sim.module);
-    DOTPAD.BLE.MIN_INTERVAL = 5;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
+    DOTPAD.BLE.MIN_INTERVAL = 5; DOTPAD.BLE.PROBE_TIMEOUT = 20;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
   });
   await page.click('#dpBtn');
 
@@ -51,7 +51,7 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && !DO
   else console.log('  (gate window missed — timing)');
 
   await page.waitForFunction(() => DOTPAD.BLE.readyCount() === 1);
-  await sleep(500);
+  await sleep(600); await waitIdle(page);   // 편집 디바운스(450ms) + 큐 배출까지
 
   // 2. 행단위 전송만 + 초기 프레임 점형 일치
   const first = await page.evaluate(() => {
@@ -100,12 +100,12 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && !DO
 
   // 5. 팬 키 라우팅: PanningRight → 항목 2, PanningLeft → 항목 1
   await page.evaluate(() => window.__sim.fireKey('PanningRight', DOTPAD.BLE.devs[0].dev));
-  await sleep(700);
+  await sleep(200); await waitIdle(page);
   const nav1 = await page.evaluate(() => ({ state: window.__sim.deviceState(), lastText: DOTPAD.BLE.devs[0].lastText }));
   ok('PanningRight → item 2 frame', JSON.stringify(nav1.state) === JSON.stringify(first.exp1));
   ok('PanningRight → item 2 text line', nav1.lastText === first.expT1, nav1.lastText);
   await page.evaluate(() => window.__sim.fireKey('PanningLeft', DOTPAD.BLE.devs[0].dev));
-  await sleep(700);
+  await sleep(200); await waitIdle(page);
   const nav0 = await page.evaluate(() => window.__sim.deviceState());
   ok('PanningLeft → back to item 1', JSON.stringify(nav0) === JSON.stringify(first.exp0));
 
@@ -122,7 +122,7 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && !DO
   // 7. 다중 기기: 추가 연결 → 미러링, 부분 해제 → 나머지 유지
   await page.click('#dpBtn');
   await page.waitForFunction(() => DOTPAD.BLE.readyCount() === 2, null, { timeout: 5000 });
-  await sleep(900);
+  await sleep(600); await waitIdle(page);
   const multi = await page.evaluate(() => {
     const dev2 = DOTPAD.BLE.devs[1].dev;
     const rows2 = new Set(window.__sim.log.filter(x => x.dev === dev2 && x.mode === 'GraphicMode').map(x => x.lineId));

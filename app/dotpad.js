@@ -158,8 +158,14 @@
       var e = BLE.findDev(dev);
       // 줄 전송 완료 신호 → 다음 줄 (기기 속도에 맞춘 흐름 제어)
       if (code === 'ResponseDisplayLineComplete' || code === 'ResponseDisplayLineAck' ||
-          code === 'ResponseDisplayLineNonAck') { BLE.sendDone(); return; }
-      if (code === 'CommandError') { BLE.errCount++; BLE.sendDone(); return; }
+          code === 'ResponseDisplayLineNonAck') { BLE.onAck(); return; }
+      if (code === 'CommandError') { BLE.errCount++; BLE.stats.err++; BLE.onAck(); return; }
+      // 보드 정보 수신 = 디스플레이 준비 완료. 그 전에 보낸 줄은 기기가 버렸을 수 있어 다시 그린다.
+      if (code === 'BoardInfo') {
+        if (e) { e.boardInfo = true; e.lastSent = []; e.lastText = null; }
+        BLE.status({ connected: BLE.readyCount(), repaint: true });
+        return;
+      }
       if (code === 'Connected') {
         if (e) e.ready = true;
         else if (BLE.devs.length && !BLE.devs[BLE.devs.length - 1].ready) BLE.devs[BLE.devs.length - 1].ready = true;
@@ -175,6 +181,7 @@
         BLE.q = BLE.q.filter(function (it) { return it.dev !== dev; });   // 끊긴 기기 대기분 폐기
         if (!BLE.connected) BLE.stopKeepAlive();
         var lost = code === 'Disconnected' && !BLE.userClosed;
+        if (lost) BLE.stats.lost++;
         BLE.status({ connected: BLE.readyCount(), lost: lost });
         if (lost && e && BLE.retries < BLE.MAX_RETRY) BLE.reconnect(e);   // 의도치 않은 끊김 → 자동 재연결
       }
@@ -183,7 +190,7 @@
     /* 자동 재연결: 저장된 기기 객체로 재시도 (스캔 창 없이). 실패해도 조용히 포기하고 안내만. */
     retries: 0, MAX_RETRY: 2,
     reconnect: function (entry) {
-      BLE.retries++;
+      BLE.retries++; BLE.stats.reconn++;
       BLE.status({ reconnecting: BLE.retries });
       setTimeout(function () {
         if (BLE.userClosed) return;
@@ -207,6 +214,11 @@
      * 그래서 (1) 한 줄씩만 in-flight, (2) ACK/Complete 또는 간격 경과 후 다음 줄,
      *        (3) 대기 중 같은 줄은 최신 내용으로 교체(=오래된 프레임 자동 폐기). */
     q: [], inflight: null, _doneT: null, errCount: 0,
+    /* 기기가 완료를 알려주면(ACK/Complete) 그때까지 기다린다 — 실기기 핀은 200ms보다 훨씬 느려서
+     * 간격만 믿고 다음 줄을 보내면 전송 중 재호출 → restart 폭주 → 링크 사망.
+     * ACK를 한 번도 못 본 기기(구형 펌웨어·시뮬레이터)에서는 간격 기반으로 자동 폴백. */
+    ACK_TIMEOUT: 5000, PROBE_TIMEOUT: 1500, ackSeen: false, timedMode: false, unacked: 0,
+    stats: { sent: 0, ack: 0, timeout: 0, err: 0, lost: 0, reconn: 0 },
 
     enqueue: function (dev, lineId, hex, mode) {
       for (var i = 0; i < BLE.q.length; i++) {
@@ -238,18 +250,36 @@
       if (wait > 0) { setTimeout(function () { BLE.drain(); }, wait); return; }
       var it = BLE.q.shift();
       BLE.inflight = it; BLE.last = Date.now(); BLE.busy = true;
+      BLE.stats.sent++;
       try {
         BLE.sdk.displayLineData(it.lineId, 0, it.hex, it.mode, it.dev);
       } catch (err) {
-        BLE.errCount++; BLE.inflight = null; BLE.busy = false;
+        BLE.errCount++; BLE.stats.err++; BLE.inflight = null; BLE.busy = false;
         setTimeout(function () { BLE.drain(); }, gap);
         return;
       }
-      // ACK가 오면 즉시, 안 오면 간격 경과 후 완료 처리 (기기 무응답에도 멈추지 않게)
-      BLE._doneT = setTimeout(function () { BLE.sendDone(); }, gap);
+      /* 첫 줄은 "이 기기가 완료를 알려주는가"를 확인하는 탐침이다.
+       * 처음부터 간격(200ms)으로 끝내버리면, 실기기는 아직 핀을 움직이는 중인데 다음 줄이 나가고
+       * 뒤늦게 도착한 ACK가 그 줄을 또 앞당겨 끝내며 겹침이 연쇄된다 → 링크 사망. */
+      var wait = BLE.ackSeen ? BLE.ACK_TIMEOUT : (BLE.timedMode ? gap : BLE.PROBE_TIMEOUT);
+      BLE._doneT = setTimeout(function () {
+        if (BLE.ackSeen) BLE.stats.timeout++;
+        else BLE.timedMode = true;            // 완료를 안 알려주는 기기로 확정 → 간격 기반
+        BLE.unacked++;                        // 응답 없이 끝냈다 → 이 줄의 늦은 ACK가 나중에 올 수 있다
+        BLE.sendDone();
+      }, wait);
     },
 
-    sendDone: function () {
+    /* 기기 완료 신호. ACK에는 줄 번호가 없으므로, 앞서 응답 없이 끝낸 줄이 있으면
+     * 그 줄의 지각 응답으로 보고 소비한다 — 아니면 지금 보내는 줄을 엉뚱하게 앞당겨 끝내
+     * 겹침이 연쇄된다(연결 끊김의 직접 원인). */
+    onAck: function () {
+      BLE.ackSeen = true; BLE.timedMode = false; BLE.stats.ack++;
+      if (BLE.unacked > 0) { BLE.unacked--; return; }
+      BLE.sendDone(true);
+    },
+
+    sendDone: function (fromAck) {
       var it = BLE.inflight;
       if (!it) return;
       if (BLE._doneT) { clearTimeout(BLE._doneT); BLE._doneT = null; }
