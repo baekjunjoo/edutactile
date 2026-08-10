@@ -213,7 +213,11 @@
      *                         ② 행 차분(바뀐 행만). 나머지는 SDK 소관. */
     errCount: 0, pendingRows: null, pendingText: null, _frameT: null,
     lastFrame: null,                       // 현재 화면 (keep-alive의 진실 원본)
-    stats: { sent: 0, ack: 0, timeout: 0, err: 0, lost: 0, reconn: 0 },
+    /* SDK는 LIVE 줄을 1.5초 간격으로 3회 자동 재전송한다(liveRefresh) — 프레임 하나가
+     * 기기에는 4배 명령이 된다. 대량 변경 프레임(팬·확대 = 전 행 교체) 뒤에는 그 재전송
+     * 창이 끝날 시간을 줘야 기기 명령 폭주로 인한 끊김이 없다. 소량 변경은 짧게. */
+    HEAVY_ROWS: 6, HEAVY_GAP: 1600, _cool: 0,
+    stats: { sent: 0, ka: 0, ack: 0, err: 0, lost: 0, reconn: 0 },
 
     /* 완성 프레임 push (호출측이 마이크로배치로 감싼다). 최신 프레임만 유지. */
     push: function (rows, textHex) {
@@ -225,7 +229,8 @@
     flushFrame: function () {
       if (!BLE.connected || !BLE.sdkMod) return;
       if (BLE.pendingRows == null && BLE.pendingText == null) return;
-      var gap = BLE.MIN_INTERVAL * Math.max(1, BLE.devs.length);   // 프레임 간 간격 (대역폭 보호)
+      // 직전 프레임의 변경량에 따른 간격: 대량 변경 뒤에는 SDK 재전송 창(1.5s)을 존중
+      var gap = Math.max(BLE.MIN_INTERVAL * Math.max(1, BLE.devs.length), BLE._cool);
       var wait = gap - (Date.now() - BLE.last);
       if (wait > 0) {
         if (BLE._frameT == null) BLE._frameT = setTimeout(function () { BLE._frameT = null; BLE.flushFrame(); }, wait + 5);
@@ -234,13 +239,14 @@
       var rows = BLE.pendingRows, text = BLE.pendingText;
       BLE.pendingRows = null; BLE.pendingText = null;
       BLE.last = Date.now();
-      var DM = BLE.sdkMod.DisplayMode;
+      var DM = BLE.sdkMod.DisplayMode, changedMax = 0;
       BLE.devs.forEach(function (e) {
         if (!e.ready) return;
+        var changed = 0;
         if (rows) rows.forEach(function (hex, r) {
           if (e.lastSent[r] === hex) return;                       // 행 차분: 바뀐 행만
           e.lastSent[r] = hex;
-          BLE.stats.sent++;
+          changed++; BLE.stats.sent++;
           try { BLE.sdk.displayLineData(r + 1, 0, hex, DM.GraphicMode, e.dev); }
           catch (err) { BLE.errCount++; BLE.stats.err++; e.lastSent[r] = null; }
         });
@@ -250,8 +256,10 @@
           try { BLE.sdk.displayLineData(0, 0, text, DM.TextMode, e.dev); }
           catch (err) { BLE.errCount++; BLE.stats.err++; e.lastText = null; }
         }
+        if (changed > changedMax) changedMax = changed;
       });
       if (rows) BLE.lastFrame = rows;
+      BLE._cool = changedMax > BLE.HEAVY_ROWS ? BLE.HEAVY_GAP : 0;  // 다음 프레임까지의 냉각
     },
 
     /* SDK 응답은 흐름제어가 아니라 진단용으로만 집계 (전송 자체는 SDK가 관리) */
@@ -263,10 +271,12 @@
       if (BLE._ka) return;
       BLE._ka = setInterval(function () {
         if (!BLE.connected || !BLE.sdkMod || !BLE.lastFrame) return;
+        if (Date.now() - BLE.last < 1200) return;      // 프레임 직후(SDK 재전송 창)에는 조용히
         var DM = BLE.sdkMod.DisplayMode, r = BLE._kaRow % 10;
         BLE._kaRow++;
         var hex = BLE.lastFrame[r];
         if (hex == null) return;
+        BLE.stats.ka++;
         BLE.devs.forEach(function (e) {
           if (!e.ready) return;
           try { BLE.sdk.displayLineData(r + 1, 0, hex, DM.GraphicMode, e.dev); } catch (x) {}

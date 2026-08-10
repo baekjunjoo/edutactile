@@ -24,7 +24,7 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
   await page.evaluate(() => {
     window.__sim = window.__mock.createMockSdk();
     DOTPAD.BLE.loadSDK = () => Promise.resolve(window.__sim.module);
-    DOTPAD.BLE.MIN_INTERVAL = 5;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
+    DOTPAD.BLE.MIN_INTERVAL = 5; DOTPAD.BLE.HEAVY_GAP = 20;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
     window.__key = k => window.__sim.fireKey(k, DOTPAD.BLE.devs[0].dev);
     window.__geo = () => {
       const b = document.querySelector('#dpVp').getBoundingClientRect();

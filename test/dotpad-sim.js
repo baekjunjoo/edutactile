@@ -35,7 +35,7 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
   await page.evaluate(() => {
     window.__sim = window.__mock.createMockSdk();
     DOTPAD.BLE.loadSDK = () => Promise.resolve(window.__sim.module);
-    DOTPAD.BLE.MIN_INTERVAL = 5;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
+    DOTPAD.BLE.MIN_INTERVAL = 5; DOTPAD.BLE.HEAVY_GAP = 20;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
   });
   await page.click('#dpBtn');
 
@@ -95,7 +95,7 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
     DOTPAD.BLE.stopKeepAlive();
     return { sent: window.__sim.log.length - len0, same: st0 === JSON.stringify(window.__sim.deviceState()) };
   });
-  ok('keep-alive resends ~1 row/s', ka.sent >= 2 && ka.sent <= 4, ka.sent);
+  ok('keep-alive resends ~1 row/s (quiet right after a frame)', ka.sent >= 1 && ka.sent <= 4, ka.sent);
   ok('keep-alive does not alter screen', ka.same);
 
   // 5. 팬 키 라우팅: PanningRight → 항목 2, PanningLeft → 항목 1

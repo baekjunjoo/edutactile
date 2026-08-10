@@ -73,7 +73,7 @@
       dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins). Starts at 1:1, where one braille dot lands on one pin. Keys: ◀▶ pan left/right (page prev/next at full view), F1/F2 up/down, F3/F4 zoom out/in.',
       dpFit: 'full page', dpOneToOne: '1:1 actual size', dpNoBrl: '⚠ braille unreadable',
       dpLost: 'DotPad disconnected.',
-      dpDiag: 'link: sent {sent} · device replies {ack} · errors {err} · drops {lost}',
+      dpDiag: 'link: frames sent {sent} · keep-alive {ka} · device replies {ack} · errors {err} · drops {lost}',
       dpReconn: 'DotPad disconnected — reconnecting… (attempt {n})',
       dpReconnFail: 'Could not reconnect automatically. Turn the device off and on, then press "Connect DotPad" again.',
       dpBrlWarn: '⚠ At this zoom one pin covers {mm}mm, but braille dots are 2.34mm apart — dots merge and the labels cannot be read by touch. Press F4 to reach 1:1; the shape is still useful for orientation at this zoom.',
@@ -114,7 +114,7 @@
       dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀). 점자 도트 1개가 핀 1개에 떨어지는 1:1로 시작합니다. 기기 키: ◀▶ 좌우 이동(전체보기에선 이전/다음 페이지), F1/F2 위/아래, F3/F4 축소/확대.',
       dpFit: '전체보기', dpOneToOne: '1:1 실제 크기', dpNoBrl: '⚠ 점자 판독 불가',
       dpLost: 'DotPad 연결이 끊겼습니다.',
-      dpDiag: '전송 {sent} · 기기 응답 {ack} · 오류 {err} · 끊김 {lost}',
+      dpDiag: '화면 전송 {sent} · 연결 유지 {ka} · 기기 응답 {ack} · 오류 {err} · 끊김 {lost}',
       dpReconn: 'DotPad 연결이 끊겨 다시 연결하는 중… ({n}번째 시도)',
       dpReconnFail: '자동 재연결에 실패했습니다. 기기를 껐다 켠 뒤 "DotPad 연결"을 다시 눌러주세요.',
       dpBrlWarn: '⚠ 이 배율에서는 핀 1개가 {mm}mm를 맡는데 점자 도트 간격은 2.34mm입니다 — 도트가 한 핀에 뭉쳐 레이블을 손으로 읽을 수 없습니다. F4로 1:1까지 확대하세요. (이 배율은 전체 형태 파악용으로만 쓰세요.)',
@@ -1607,7 +1607,7 @@
     var s = B.stats;
     el.style.display = '';
     el.textContent = t('dpDiag')
-      .replace('{sent}', s.sent).replace('{ack}', s.ack)
+      .replace('{sent}', s.sent).replace('{ka}', s.ka).replace('{ack}', s.ack)
       .replace('{err}', s.err).replace('{lost}', s.lost);
   }
   /* 점자가 뭉개지는 배율이면 제작자에게 경고 (산출물 사용자는 못 보는 문제라 화면에서 알려야 한다) */

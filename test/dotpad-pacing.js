@@ -60,17 +60,30 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok('12 rapid keys collapse to a few throttled frames', flood.frames <= 5, `프레임 ${flood.frames}개`);
   ok('stale frames dropped (bounded traffic)', flood.sent <= 45, `전송 ${flood.sent}행`);
 
-  // ── 4. 프레임 사이 간격은 200ms 이상 ──
-  const gaps = await page.evaluate(() => {
-    const g = window.__sim.log.filter(x => x.mode === 'GraphicMode');
-    const starts = [];
-    let lastT = -1e9;
-    g.forEach(x => { if (x.t - lastT > 120) starts.push(x.t); lastT = x.t; });
+  // ── 3b. ★ 대량 변경 프레임 뒤 냉각: SDK가 LIVE 줄을 1.5s×3회 자동 재전송하므로
+  //        전 행이 바뀌는 프레임(팬·확대)을 연달아 보내면 기기 명령이 4배로 폭주 → 끊김.
+  //        무거운 프레임 뒤 다음 프레임은 HEAVY_GAP(1.6s) 이상 띄운다. ──
+  //        (keep-alive를 멈추고 측정 — 단일 행 재전송이 프레임 경계로 오인되지 않게)
+  const heavy = await page.evaluate(async () => {
+    DOTPAD.BLE.stopKeepAlive();
+    await new Promise(r => setTimeout(r, 2000));      // 직전 프레임의 냉각 소진
+    const g0 = window.__sim.log.filter(x => x.mode === 'GraphicMode').length;
+    window.__key('PanningRight');                     // 전 행 교체 프레임 1
+    await new Promise(r => setTimeout(r, 400));
+    window.__key('PanningRight');                     // 전 행 교체 프레임 2 — 냉각 후에 나가야 함
+    await new Promise(r => setTimeout(r, 4000));
+    const log = window.__sim.log.filter(x => x.mode === 'GraphicMode').slice(g0);
+    const starts = []; let lastT = -1e9;
+    log.forEach(x => { if (x.t - lastT > 120) starts.push(x.t); lastT = x.t; });
     let minGap = Infinity;
     for (let i = 1; i < starts.length; i++) minGap = Math.min(minGap, starts[i] - starts[i - 1]);
-    return { frames: starts.length, minGap: starts.length > 1 ? minGap : null };
+    return { frames: starts.length, gap: starts.length >= 2 ? starts[1] - starts[0] : null,
+             minGap: starts.length > 1 ? minGap : null, cool: DOTPAD.BLE.HEAVY_GAP };
   });
-  ok('frames are ≥200ms apart', gaps.minGap == null || gaps.minGap >= 190, `최소 ${gaps.minGap}ms`);
+  ok('heavy frame → next frame waits for SDK refresh window (≥1.6s)',
+    heavy.gap != null && heavy.gap >= heavy.cool - 50, `프레임 간 ${heavy.gap}ms (기준 ${heavy.cool}ms)`);
+  ok('frames are ≥200ms apart', heavy.minGap == null || heavy.minGap >= 190, `최소 ${heavy.minGap}ms`);
+  await page.evaluate(() => DOTPAD.BLE.startKeepAlive());
 
   // ── 5. keep-alive: 현재 화면에서 1행/s, 0(빈 행) 전송 금지 ──
   const ka = await page.evaluate(async () => {
