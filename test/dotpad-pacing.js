@@ -1,6 +1,6 @@
-/* 연결 끊김 원인 검증: 전송 폭주 방지 (실제 기본 간격 200ms 그대로)
- * SDK sendCommand는 전송 중 재호출 시 큐잉이 아니라 restart가 걸리는 상태머신이라,
- * 한 프레임의 여러 줄을 연달아 쏘면 전송이 끝나지 않고 링크가 죽는다. */
+/* 전송 계층 검증 — 실기기 검증 패턴(Dote/공식 데모)과의 일치
+ * 핵심: 행은 버스트(SDK 내부가 큐·ACK 처리), 프레임은 200ms×기기수 스로틀 + 최신만,
+ *       keep-alive는 현재 화면에서 1행/s, 끊김 시 자동 재연결. */
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('/home/claude/.npm-global/lib/node_modules/playwright');
@@ -23,125 +23,98 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await page.waitForSelector('#gallery .gcat');
   await page.evaluate(() => {
     window.__sim = window.__mock.createMockSdk();
-    DOTPAD.BLE.loadSDK = () => Promise.resolve(window.__sim.module);   // MIN_INTERVAL은 실제 기본값(200) 유지
+    DOTPAD.BLE.loadSDK = () => Promise.resolve(window.__sim.module);   // 실제 기본 간격(200ms) 유지
     window.__key = k => window.__sim.fireKey(k, DOTPAD.BLE.devs[0].dev);
   });
   await page.click('#dpBtn');
   await page.waitForFunction(() => DOTPAD.BLE.readyCount() === 1);
+  await sleep(1600);
 
-  // ── 1. 기본 간격이 계약값(200ms)인지 ──
+  // ── 1. 기본 간격 계약값 ──
   const iv = await page.evaluate(() => DOTPAD.BLE.MIN_INTERVAL);
-  ok('default send interval is 200ms (bandwidth guard)', iv === 200, iv);
+  ok('frame throttle is 200ms (contract value)', iv === 200, iv);
 
-  // ── 2. 한 번에 한 줄만 in-flight (동시 전송 없음) ──
-  await sleep(2500);
-  const conc = await page.evaluate(() => {
-    // 로그 타임스탬프 간격 분석
-    const g = window.__sim.log;
-    let minGap = Infinity;
-    for (let i = 1; i < g.length; i++) minGap = Math.min(minGap, g[i].t - g[i - 1].t);
-    return { n: g.length, minGap: g.length > 1 ? minGap : null, inflight: !!DOTPAD.BLE.inflight };
+  // ── 2. 프레임 안의 행들은 버스트 — Dote 검증 패턴 (SDK 내부가 페이싱) ──
+  const first = await page.evaluate(() => {
+    const g = window.__sim.log.filter(x => x.mode === 'GraphicMode');
+    const t0 = g.length ? g[0].t : 0;
+    const burst = g.filter(x => x.t - t0 < 100).length;   // 첫 프레임: 100ms 안에 여러 행
+    return { total: g.length, burst };
   });
-  ok('lines are paced, never blasted back-to-back',
-    conc.n > 1 && conc.minGap >= 150, `전송 ${conc.n}건, 최소 간격 ${conc.minGap}ms`);
+  ok('rows within a frame go back-to-back (SDK-internal pacing)', first.burst >= 5, `첫 100ms 안 ${first.burst}행`);
 
-  // ── 3. 조작 폭주 → 큐가 최신 프레임으로 합쳐진다 (오래된 프레임 폐기) ──
+  // ── 3. 키 연타 → 프레임 스로틀 + 최신 프레임만 (오래된 프레임 폐기) ──
   const flood = await page.evaluate(async () => {
+    const frames = [];                       // 프레임 시작 시각 기록 (같은 tick 묶음)
     const before = window.__sim.log.length;
-    for (let i = 0; i < 12; i++) {          // 확대·이동을 빠르게 연타
+    for (let i = 0; i < 12; i++) {
       window.__key(i % 2 ? 'PanningRight' : 'PanningLeft');
       await new Promise(r => setTimeout(r, 30));
     }
-    const qPeak = DOTPAD.BLE.q.length;
-    await new Promise(r => setTimeout(r, 3000));
-    return { sent: window.__sim.log.length - before, qPeak };
+    await new Promise(r => setTimeout(r, 2500));
+    const log = window.__sim.log.slice(before).filter(x => x.mode === 'GraphicMode');
+    let f = 0, lastT = -1e9;
+    log.forEach(x => { if (x.t - lastT > 120) f++; lastT = x.t; });
+    return { sent: log.length, frames: f };
   });
-  ok('queue never exceeds one screen (11 lines) under key spam', flood.qPeak <= 11, `큐 최대 ${flood.qPeak}건`);
-  ok('12 rapid key presses do not produce 12 frames of traffic',
-    flood.sent <= 40, `전송 ${flood.sent}건 (합쳐지지 않으면 100건 이상)`);
+  ok('12 rapid keys collapse to a few throttled frames', flood.frames <= 5, `프레임 ${flood.frames}개`);
+  ok('stale frames dropped (bounded traffic)', flood.sent <= 45, `전송 ${flood.sent}행`);
 
-  // ── 4. 무응답 기기에서도 멈추지 않는다 (ACK 없이도 다음 줄로) ──
-  const noAck = await page.evaluate(async () => {
+  // ── 4. 프레임 사이 간격은 200ms 이상 ──
+  const gaps = await page.evaluate(() => {
+    const g = window.__sim.log.filter(x => x.mode === 'GraphicMode');
+    const starts = [];
+    let lastT = -1e9;
+    g.forEach(x => { if (x.t - lastT > 120) starts.push(x.t); lastT = x.t; });
+    let minGap = Infinity;
+    for (let i = 1; i < starts.length; i++) minGap = Math.min(minGap, starts[i] - starts[i - 1]);
+    return { frames: starts.length, minGap: starts.length > 1 ? minGap : null };
+  });
+  ok('frames are ≥200ms apart', gaps.minGap == null || gaps.minGap >= 190, `최소 ${gaps.minGap}ms`);
+
+  // ── 5. keep-alive: 현재 화면에서 1행/s, 0(빈 행) 전송 금지 ──
+  const ka = await page.evaluate(async () => {
+    const st0 = JSON.stringify(window.__sim.deviceState());
     const before = window.__sim.log.length;
-    DOTPAD.BLE.devs.forEach(d => { d.lastSent = []; });   // 전체 재전송 유도
-    window.__key('KeyFunction1');
-    await new Promise(r => setTimeout(r, 3000));
-    return window.__sim.log.length - before;
-  });
-  ok('keeps sending without ACK (timeout fallback)', noAck >= 5, `${noAck}건`);
-
-  // ── 5. 끊김 시: 대기분 폐기 + 자동 재연결 시도 + 안내 ──
-  const lost = await page.evaluate(async () => {
-    const dev = DOTPAD.BLE.devs[0].dev;
-    window.__sim.fireMessage('Disconnected', dev);
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise(r => setTimeout(r, 3200));
+    const fresh = window.__sim.log.slice(before).filter(x => x.mode === 'GraphicMode');
     return {
-      q: DOTPAD.BLE.q.length, inflight: !!DOTPAD.BLE.inflight,
-      retries: DOTPAD.BLE.retries, msg: document.querySelector('#dpMsg').textContent
+      sent: fresh.length,
+      same: st0 === JSON.stringify(window.__sim.deviceState()),
+      zeros: fresh.filter(x => x.hex === '0'.repeat(60) &&
+        window.__sim.deviceState()[x.lineId - 1] !== '0'.repeat(60)).length
     };
   });
-  ok('pending lines dropped for the lost device', lost.q === 0 && !lost.inflight, JSON.stringify(lost));
-  ok('auto-reconnect is attempted', lost.retries >= 1, lost.retries);
-  ok('user is told what happened', /reconnect|재연결|disconnect|끊/.test(lost.msg), lost.msg.slice(0, 60));
+  ok('keep-alive ~1 row/s while idle', ka.sent >= 2 && ka.sent <= 5, ka.sent);
+  ok('keep-alive resends the CURRENT screen (never blanks a row)', ka.same && ka.zeros === 0, JSON.stringify(ka));
 
-  // ── 6. 재연결 성공 시 정상 복귀 ──
+  // ── 6. 끊김 → 자동 재연결 + 안내 + 복귀 후 화면 복원 ──
+  const lost = await page.evaluate(async () => {
+    window.__sim.fireMessage('Disconnected', DOTPAD.BLE.devs[0].dev);
+    await new Promise(r => setTimeout(r, 150));
+    return { retries: DOTPAD.BLE.retries, msg: document.querySelector('#dpMsg').textContent };
+  });
+  ok('auto-reconnect attempted on unexpected drop', lost.retries >= 1, lost.retries);
+  ok('user told what happened', /reconnect|재연결|disconnect|끊/.test(lost.msg), lost.msg.slice(0, 60));
   await page.waitForFunction(() => DOTPAD.BLE.readyCount() === 1, null, { timeout: 8000 }).catch(() => {});
-  const back = await page.evaluate(() => ({ ready: DOTPAD.BLE.readyCount(), retries: DOTPAD.BLE.retries }));
-  ok('reconnected device resumes (retries reset)', back.ready === 1 && back.retries === 0, JSON.stringify(back));
+  await sleep(1200);
+  const back = await page.evaluate(() => ({
+    ready: DOTPAD.BLE.readyCount(), retries: DOTPAD.BLE.retries,
+    ink: window.__sim.deviceState().some(r => r !== '0'.repeat(60))
+  }));
+  ok('reconnected and screen restored (retries reset)', back.ready === 1 && back.retries === 0 && back.ink, JSON.stringify(back));
+
+  // ── 7. BoardInfo 수신 → 전체 화면 재전송 (SDK가 준비 전 라인을 버리는 것 보상) ──
+  const bi = await page.evaluate(async () => {
+    const before = window.__sim.log.length;
+    window.__sim.fireMessage('BoardInfo', DOTPAD.BLE.devs[0].dev);
+    await new Promise(r => setTimeout(r, 1200));
+    const fresh = window.__sim.log.slice(before).filter(x => x.mode === 'GraphicMode');
+    return new Set(fresh.map(x => x.lineId)).size;
+  });
+  ok('BoardInfo triggers a full repaint', bi >= 8, `${bi}행 재전송`);
 
   await browser.close();
-
-  /* ── ★ 실기기 재현: 핀 구동이 느려 완료 응답이 700ms 뒤에 오는 기기 ──
-   * 이전 줄이 끝나기 전에 다음 줄을 보내면 SDK sendCommand에 restart가 걸려 전송이 끝나지 않고
-   * 링크가 죽는다(= 사용자가 겪은 연결 끊김). 처음부터 응답하는 기기로 붙여 검증한다. */
-  {
-    const b2 = await chromium.launch();
-    const p2 = await b2.newPage({ viewport: { width: 1440, height: 900 } });
-    p2.on('pageerror', e => console.log('  [pageerror]', e.message));
-    await p2.addInitScript(`
-      Object.defineProperty(navigator, 'bluetooth', { value: {} });
-      window.__mock = (function(){ const module = { exports: {} }; ${mockSrc}; return module.exports; })();
-    `);
-    await p2.goto(DIST);
-    await p2.waitForSelector('#gallery .gcat');
-    await p2.evaluate(() => {
-      window.__ev = []; window.__outstanding = 0; window.__overlap = 0;
-      const sim = window.__mock.createMockSdk();
-      window.__sim = sim;
-      const M = sim.module, Orig = M.DotPadSDK, REFRESH = 700;
-      M.DotPadSDK = class extends Orig {
-        displayLineData(lineId, start, hex, mode, dev) {
-          if (window.__outstanding > 0) window.__overlap++;   // 이전 줄이 끝나기 전에 또 보냄 = 폭주
-          window.__outstanding++;
-          window.__ev.push({ t: Date.now(), lineId });
-          super.displayLineData(lineId, start, hex, mode, dev);
-          setTimeout(() => {                                  // 기기가 다 그린 뒤 완료 통지
-            window.__outstanding--;
-            sim.fireMessage('ResponseDisplayLineComplete', dev);
-          }, REFRESH);
-        }
-      };
-      DOTPAD.BLE.loadSDK = () => Promise.resolve(M);
-    });
-    await p2.click('#dpBtn');
-    await p2.waitForFunction(() => DOTPAD.BLE.readyCount() === 1);
-    await sleep(6000);
-    const slow = await p2.evaluate(() => {
-      const ev = window.__ev;
-      let minGap = Infinity;
-      for (let i = 1; i < ev.length; i++) minGap = Math.min(minGap, ev[i].t - ev[i - 1].t);
-      return { n: ev.length, overlap: window.__overlap, minGap: ev.length > 1 ? minGap : null,
-               ackSeen: DOTPAD.BLE.ackSeen, timedMode: DOTPAD.BLE.timedMode, stats: DOTPAD.BLE.stats };
-    });
-    ok('slow device: never sends a line before the previous one completes',
-      slow.overlap === 0, `겹친 전송 ${slow.overlap}건`);
-    ok('slow device: pacing follows the device, not the timer',
-      slow.n > 1 && slow.minGap >= 650, `전송 ${slow.n}건, 최소 간격 ${slow.minGap}ms (기기 700ms)`);
-    ok('slow device: ACK-driven flow control engaged', slow.ackSeen === true && slow.timedMode === false, JSON.stringify(slow.stats));
-    ok('slow device: no spurious timeouts', slow.stats.timeout === 0, slow.stats.timeout);
-    await b2.close();
-  }
-
   console.log(`\n결과: ${pass} 통과 / ${fail} 실패`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
