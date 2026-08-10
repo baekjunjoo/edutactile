@@ -649,8 +649,21 @@
   var _formT = null;
   function scheduleUpdate() { clearTimeout(_formT); _formT = setTimeout(update, 180); }
 
+  var paramRows = [];
+  /* showIf 조건에 따라 파라미터 행 표시/숨김 (선택이 바뀔 때마다 재평가) */
+  function applyParamVis() {
+    if (!paramRows.length) return;
+    var p = readParams();
+    paramRows.forEach(function (x) {
+      var on = true;
+      try { on = !!x.fn(p); } catch (e) {}
+      x.row.style.display = on ? '' : 'none';
+    });
+  }
+
   function renderForm() {
     var f = $('#form'); f.innerHTML = '';
+    paramRows = [];
     if (!state.tpl) return;
     // 제목 수정 (미리보기 제목 클릭으로도 가능). 템플릿이 자체 제목 파라미터를 가지면 중복 생성하지 않는다.
     if (state.tpl !== RULEBOOK_TPL && state.tpl !== TRACE_TPL && !tplTitleParam()) {
@@ -722,7 +735,10 @@
       if (p.type === 'text' || p.type === 'textarea' || p.type === 'number') inp.addEventListener('input', scheduleUpdate);
       else inp.addEventListener('change', update);
       row.appendChild(inp); f.appendChild(row);
+      // 다른 선택에 따라 의미가 없어지는 항목은 숨긴다 (예: 정육면체의 가로·높이·세로)
+      if (p.showIf) paramRows.push({ row: row, fn: p.showIf });
     });
+    applyParamVis();
     if (state.tpl.sequence) {   // 시퀀스 생성 템플릿: 버튼으로 페이지 일괄 생성
       var gb = document.createElement('button'); gb.className = 'genBtn';
       gb.textContent = t('genSeq');
@@ -931,6 +947,7 @@
     if (!state.tpl && !state.loadedSpec) return;
     try {
       state.extraReport = [];
+      applyParamVis();
       var textLang = state.brailleLang === 'ko' ? 'ko' : 'en';
       var spec;
       if (state.loadedSpec) {
@@ -1011,7 +1028,19 @@
     var head = $('#h-dims'), box = $('#dimForm');
     head.style.display = dims.length ? '' : 'none';
     if (!dims.length) { box.innerHTML = ''; return; }
-    if (box.childElementCount === dims.length + 1) {  // 개수 같으면 값만 유지 (포커스 보존)
+    if (box.childElementCount === dims.length + 1) {
+      // 개수가 같으면 행을 다시 만들지 않고 값만 동기화한다 (포커스 보존).
+      // 예전엔 그냥 return이라, 파라미터로 치수가 바뀌어도 패널이 옛 값을 계속 보여줬다.
+      dims.forEach(function (d, i) {
+        var row = box.children[i + 1]; if (!row) return;
+        var inp = row.querySelector('input');
+        if (!inp || document.activeElement === inp) return;
+        var parsed = parseDimLabel(d.label);
+        var v = parsed ? String(parsed.val) : d.label;
+        if (inp.value !== v) inp.value = v;
+        var u = row.querySelector('.dunit');
+        if (u) u.textContent = (parsed && parsed.unit) ? (state.uiLang === 'ko' ? unitOf(parsed.unit).ko : unitOf(parsed.unit).en) : '';
+      });
       return;
     }
     box.innerHTML = '';
@@ -1049,6 +1078,7 @@
         inp.type = 'number'; inp.step = 'any'; inp.value = parsed.val;
         inp.style.width = '84px';
         var uTxt = document.createElement('span');
+        uTxt.className = 'dunit';
         uTxt.style.cssText = 'color:#8a8378;font-size:12px;flex:1';
         uTxt.textContent = parsed.unit ? (state.uiLang === 'ko' ? unitOf(parsed.unit).ko : unitOf(parsed.unit).en) : '';
         inp.addEventListener('change', function () {

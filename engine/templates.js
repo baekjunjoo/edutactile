@@ -390,14 +390,19 @@
     name: { en: 'Basic Shape', ko: '기본 도형' },
     params: [
       { key: 'shape', label: { en: 'Shape', ko: '도형' }, type: 'select', options: ['square', 'rectangle', 'triangle', 'right-triangle', 'circle'], default: 'rectangle' },
-      { key: 'w', label: { en: 'Width', ko: '가로' }, type: 'number', default: 6 },
-      { key: 'h', label: { en: 'Height', ko: '세로' }, type: 'number', default: 4 },
+      // 도형마다 실제로 의미 있는 수치만 노출한다 (정사각형은 한 변, 원은 지름)
+      { key: 'side', label: { en: 'Side length', ko: '한 변 길이' }, type: 'number', default: 5, showIf: function (p) { return p.shape === 'square'; } },
+      { key: 'dia', label: { en: 'Diameter', ko: '지름' }, type: 'number', default: 6, showIf: function (p) { return p.shape === 'circle'; } },
+      { key: 'w', label: { en: 'Width', ko: '가로' }, type: 'number', default: 6, showIf: function (p) { return p.shape !== 'square' && p.shape !== 'circle'; } },
+      { key: 'h', label: { en: 'Height', ko: '세로' }, type: 'number', default: 4, showIf: function (p) { return p.shape !== 'square' && p.shape !== 'circle'; } },
       { key: 'unit', label: { en: 'Unit word', ko: '단위 단어' }, type: 'text', default: 'inches' },
       { key: 'showDims', label: { en: 'Show dimensions', ko: '치수 표시' }, type: 'bool', default: true }
     ],
     build: function (p, lang) {
-      var w = Math.max(0.1, +p.w || 4), h = Math.max(0.1, +p.h || 3);
-      if (p.shape === 'square') h = w;
+      var w, h;
+      if (p.shape === 'square') { w = h = Math.max(0.1, +p.side || 5); }
+      else if (p.shape === 'circle') { w = h = Math.max(0.1, +p.dia || 6); }
+      else { w = Math.max(0.1, +p.w || 6); h = Math.max(0.1, +p.h || 4); }
       var unit = p.unit ? ' ' + p.unit : '';
       var els = [], names = {
         square: ['Square', '정사각형'], rectangle: ['Rectangle', '직사각형'],
@@ -545,14 +550,18 @@
     name: { en: 'Solid Net (unfolded)', ko: '전개도' },
     params: [
       { key: 'solid', label: { en: 'Solid', ko: '입체' }, type: 'select', options: ['cube', 'cuboid'], default: 'cube' },
-      { key: 'w', label: { en: 'Width', ko: '가로' }, type: 'number', default: 4 },
-      { key: 'h', label: { en: 'Height', ko: '높이' }, type: 'number', default: 3 },
-      { key: 'd', label: { en: 'Depth', ko: '세로(깊이)' }, type: 'number', default: 2 },
+      // 정육면체는 한 변으로 결정된다 — 가로·높이·세로를 따로 두면 바꿔도 반영되지 않아 혼란스럽다
+      { key: 'edge', label: { en: 'Edge length', ko: '한 변 길이' }, type: 'number', default: 4, showIf: function (p) { return p.solid === 'cube'; } },
+      { key: 'w', label: { en: 'Width', ko: '가로' }, type: 'number', default: 4, showIf: function (p) { return p.solid !== 'cube'; } },
+      { key: 'h', label: { en: 'Height', ko: '높이' }, type: 'number', default: 3, showIf: function (p) { return p.solid !== 'cube'; } },
+      { key: 'd', label: { en: 'Depth', ko: '세로(깊이)' }, type: 'number', default: 2, showIf: function (p) { return p.solid !== 'cube'; } },
+      { key: 'showDims', label: { en: 'Show measurements', ko: '치수 표시' }, type: 'bool', default: true },
       { key: 'faceLabels', label: { en: 'Face labels', ko: '면 이름 표시' }, type: 'bool', default: true }
     ],
     build: function (p, lang) {
-      var w = +p.w || 4, h = +p.h || 3, d = +p.d || 2;
-      if (p.solid === 'cube') { h = w; d = w; }
+      var w, h, d;
+      if (p.solid === 'cube') { w = h = d = +p.edge || 4; }
+      else { w = +p.w || 4; h = +p.h || 3; d = +p.d || 2; }
       // 십자 전개: 가운데 행 = 옆·앞·옆·뒤, 앞면 위 = 윗면, 아래 = 밑면
       var els = [
         // 접는 선 (파선)
@@ -577,6 +586,18 @@
         els.push({ type: 'label', at: [d + w + d + w / 2, h / 2], text: F[3], anchor: 'middle' });
         els.push({ type: 'label', at: [d + w / 2, h + d / 2], text: F[4], anchor: 'middle' });
         els.push({ type: 'label', at: [d + w / 2, -d / 2], text: F[5], anchor: 'middle' });
+      }
+      /* 치수 레이블 — 도면은 용지에 맞춰 자동 축척되므로, 실제 수치는 점자 레이블이 전달한다.
+       * (이게 없으면 숫자를 바꿔도 산출물이 똑같아 보인다) */
+      if (p.showDims !== false) {
+        var n = function (v) { return String(Math.round(v * 100) / 100); };
+        if (p.solid === 'cube') {
+          els.push({ type: 'dimension', from: [d, 0], to: [d + w, 0], side: 'bottom', label: n(w) });
+        } else {
+          els.push({ type: 'dimension', from: [d, 0], to: [d + w, 0], side: 'bottom', label: n(w) });
+          els.push({ type: 'dimension', from: [0, 0], to: [0, h], side: 'left', label: n(h) });
+          els.push({ type: 'dimension', from: [0, 0], to: [d, 0], side: 'bottom', offset: 34, label: n(d) });
+        }
       }
       return {
         lang: lang,
