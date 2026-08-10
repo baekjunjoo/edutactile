@@ -11,6 +11,8 @@ const DIST = 'file://' + path.resolve(__dirname, '../dist/tactile-material-maker
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { if (c) { pass++; console.log('  ✔', n); } else { fail++; console.log('  ✘', n, x !== undefined ? '→ ' + x : ''); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* 전송 큐가 비고 in-flight가 없을 때까지 (한 줄씩 보내므로 프레임 완성까지 기다린다) */
+const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && !DOTPAD.BLE.inflight && DOTPAD.BLE.q.length === 0, null, { timeout: 20000 }); await sleep(60); };
 
 (async () => {
   const browser = await chromium.launch();
@@ -33,6 +35,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await page.evaluate(() => {
     window.__sim = window.__mock.createMockSdk();
     DOTPAD.BLE.loadSDK = () => Promise.resolve(window.__sim.module);
+    DOTPAD.BLE.MIN_INTERVAL = 5;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
   });
   await page.click('#dpBtn');
 

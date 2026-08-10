@@ -41,6 +41,7 @@ fs.writeFileSync(UMD_SDK, CORE + '\nwindow.DotPadSDK = DotPadSDK; window.DotPadS
     await page.addInitScript(`Object.defineProperty(navigator, 'bluetooth', { value: {} });`);
     await page.goto(DIST);
     await page.waitForSelector('#gallery .gcat');
+    await page.evaluate(() => { DOTPAD.BLE.MIN_INTERVAL = 5; });
     const emb = await page.evaluate(() => !!window.DOTPAD_SDK_SRC && window.DOTPAD_SDK_SRC.length > 10000);
     ok('official SDK embedded (base64)', emb);
     let chooserOpened = false;
@@ -72,6 +73,7 @@ fs.writeFileSync(UMD_SDK, CORE + '\nwindow.DotPadSDK = DotPadSDK; window.DotPadS
     `);
     await page.goto(DIST);
     await page.waitForSelector('#gallery .gcat');
+    await page.evaluate(() => { DOTPAD.BLE.MIN_INTERVAL = 5; });   // 테스트 가속 (전송 간격은 dotpad-pacing에서 검증)
     const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 8000 }), page.click('#dpBtn')]);
     await chooser.setFiles(sdkPath);
     await page.waitForFunction(() => window.DOTPAD && DOTPAD.BLE.readyCount() === 1, null, { timeout: 8000 });

@@ -52,7 +52,6 @@
     sdkMod: null, sdk: null, scanner: null,
     devs: [], MAX: 5,                          // [{dev,name,ready,lastSent[],lastText}]
     busy: false, last: 0,
-    pendingRows: null, pendingText: null,
     MIN_INTERVAL: 200, _ka: null, _kaRow: 0,
     classroom: false, userClosed: false,
     onStatus: null, onKeyNav: null,            // 앱이 주입
@@ -157,19 +156,43 @@
 
     onMessage: function (dev, code) {
       var e = BLE.findDev(dev);
+      // 줄 전송 완료 신호 → 다음 줄 (기기 속도에 맞춘 흐름 제어)
+      if (code === 'ResponseDisplayLineComplete' || code === 'ResponseDisplayLineAck' ||
+          code === 'ResponseDisplayLineNonAck') { BLE.sendDone(); return; }
+      if (code === 'CommandError') { BLE.errCount++; BLE.sendDone(); return; }
       if (code === 'Connected') {
         if (e) e.ready = true;
         else if (BLE.devs.length && !BLE.devs[BLE.devs.length - 1].ready) BLE.devs[BLE.devs.length - 1].ready = true;
         BLE.connected = true;
         BLE.startKeepAlive();
+        BLE.retries = 0;
         BLE.status({ connected: BLE.readyCount() });
-        BLE.pump();
+        BLE.drain();
       } else if (code === 'Disconnected' || code === 'ConnectedFail') {
         if (e) BLE.devs.splice(BLE.devs.indexOf(e), 1);
         BLE.connected = BLE.readyCount() > 0;
+        if (BLE.inflight) { BLE.inflight = null; BLE.busy = false; }
+        BLE.q = BLE.q.filter(function (it) { return it.dev !== dev; });   // 끊긴 기기 대기분 폐기
         if (!BLE.connected) BLE.stopKeepAlive();
-        BLE.status({ connected: BLE.readyCount(), lost: code === 'Disconnected' && !BLE.userClosed });
+        var lost = code === 'Disconnected' && !BLE.userClosed;
+        BLE.status({ connected: BLE.readyCount(), lost: lost });
+        if (lost && e && BLE.retries < BLE.MAX_RETRY) BLE.reconnect(e);   // 의도치 않은 끊김 → 자동 재연결
       }
+    },
+
+    /* 자동 재연결: 저장된 기기 객체로 재시도 (스캔 창 없이). 실패해도 조용히 포기하고 안내만. */
+    retries: 0, MAX_RETRY: 2,
+    reconnect: function (entry) {
+      BLE.retries++;
+      BLE.status({ reconnecting: BLE.retries });
+      setTimeout(function () {
+        if (BLE.userClosed) return;
+        try {
+          BLE.sdk.connectBleDevice(entry.dev).then(function (dev) {
+            BLE.devs.push({ dev: dev || entry.dev, name: entry.name, ready: false, lastSent: [], lastText: null });
+          }).catch(function () { BLE.status({ error: 'reconnect' }); });
+        } catch (err) { BLE.status({ error: 'reconnect' }); }
+      }, 800 * BLE.retries);
     },
 
     onKey: function (dev, key) {
@@ -177,58 +200,82 @@
       if (BLE.onKeyNav) try { BLE.onKeyNav(key); } catch (e) {}
     },
 
+    /* ── 전송: 한 번에 한 줄, 간격을 두고, 최신 프레임으로 덮어쓰며 ──
+     * SDK의 sendCommand는 내부 상태머신이라 전송 중에 또 부르면 큐잉이 아니라 restart가 걸린다
+     * (currentIndex 초기화 + 라인 상태 리셋). 한 프레임의 여러 줄을 연달아 쏘면 restart가 반복돼
+     * 전송이 끝나지 않고 링크가 죽는다 → 실기기 연결 끊김의 원인.
+     * 그래서 (1) 한 줄씩만 in-flight, (2) ACK/Complete 또는 간격 경과 후 다음 줄,
+     *        (3) 대기 중 같은 줄은 최신 내용으로 교체(=오래된 프레임 자동 폐기). */
+    q: [], inflight: null, _doneT: null, errCount: 0,
+
+    enqueue: function (dev, lineId, hex, mode) {
+      for (var i = 0; i < BLE.q.length; i++) {
+        var it = BLE.q[i];
+        if (it.dev === dev && it.lineId === lineId && it.mode === mode) { it.hex = hex; return; }  // 최신으로 교체
+      }
+      BLE.q.push({ dev: dev, lineId: lineId, hex: hex, mode: mode });
+    },
+
     /* 완성 프레임 push (호출측이 setTimeout(0) 마이크로배치로 감싼다) */
     push: function (rows, textHex) {
-      BLE.pendingRows = rows;
-      BLE.pendingText = textHex == null ? BLE.pendingText : textHex;
-      BLE.pump();
-    },
-
-    pump: function () {
-      if (BLE.busy || !BLE.connected || !BLE.pendingRows) return;
-      var gap = BLE.MIN_INTERVAL * Math.max(1, BLE.devs.length);   // 대역폭 보호
-      var now = Date.now();
-      if (now - BLE.last < gap) {
-        setTimeout(function () { BLE.pump(); }, gap - (now - BLE.last) + 5);
-        return;
-      }
-      var rows = BLE.pendingRows, text = BLE.pendingText;
-      BLE.pendingRows = null; BLE.pendingText = null;
-      BLE.busy = true; BLE.last = now;
+      if (!BLE.connected || !BLE.sdkMod) return;
       var DM = BLE.sdkMod.DisplayMode;
-      var chain = Promise.resolve();
       BLE.devs.forEach(function (e) {
         if (!e.ready) return;
-        rows.forEach(function (hex, r) {
-          if (e.lastSent[r] === hex) return;                       // ★ 행 차분
-          chain = chain.then(function () {
-            return BLE.sdk.displayLineData(r + 1, 0, hex, DM.GraphicMode, e.dev);
-          }).then(function () { e.lastSent[r] = hex; });
+        if (rows) rows.forEach(function (hex, r) {
+          if (e.lastSent[r] === hex) return;                       // 행 차분
+          BLE.enqueue(e.dev, r + 1, hex, DM.GraphicMode);
         });
-        if (text != null && e.lastText !== text) {
-          chain = chain.then(function () {
-            return BLE.sdk.displayLineData(0, 0, text, DM.TextMode, e.dev);
-          }).then(function () { e.lastText = text; });
-        }
+        if (textHex != null && e.lastText !== textHex) BLE.enqueue(e.dev, 0, textHex, DM.TextMode);
       });
-      chain.catch(function () {}).then(function () {
-        BLE.busy = false;
-        if (BLE.pendingRows) BLE.pump();
-      });
+      BLE.drain();
     },
 
-    /* keep-alive: 1초마다 1행 재전송 (연결 유지) */
+    drain: function () {
+      if (BLE.inflight || !BLE.connected || !BLE.q.length) return;
+      var gap = BLE.MIN_INTERVAL * Math.max(1, BLE.devs.length);   // 대역폭 보호
+      var wait = gap - (Date.now() - BLE.last);
+      if (wait > 0) { setTimeout(function () { BLE.drain(); }, wait); return; }
+      var it = BLE.q.shift();
+      BLE.inflight = it; BLE.last = Date.now(); BLE.busy = true;
+      try {
+        BLE.sdk.displayLineData(it.lineId, 0, it.hex, it.mode, it.dev);
+      } catch (err) {
+        BLE.errCount++; BLE.inflight = null; BLE.busy = false;
+        setTimeout(function () { BLE.drain(); }, gap);
+        return;
+      }
+      // ACK가 오면 즉시, 안 오면 간격 경과 후 완료 처리 (기기 무응답에도 멈추지 않게)
+      BLE._doneT = setTimeout(function () { BLE.sendDone(); }, gap);
+    },
+
+    sendDone: function () {
+      var it = BLE.inflight;
+      if (!it) return;
+      if (BLE._doneT) { clearTimeout(BLE._doneT); BLE._doneT = null; }
+      BLE.inflight = null; BLE.busy = false;
+      var e = BLE.findDev(it.dev);
+      if (e) {                                   // 실제로 보낸 뒤에만 기록 → 유실된 줄은 다음에 다시 간다
+        if (it.lineId === 0) e.lastText = it.hex;
+        else e.lastSent[it.lineId - 1] = it.hex;
+      }
+      BLE.drain();
+    },
+
+    /* keep-alive: 1초마다 1행 재전송 (연결 유지). 보낼 게 남아 있으면 그쪽이 우선 */
     startKeepAlive: function () {
       if (BLE._ka) return;
       BLE._ka = setInterval(function () {
-        if (!BLE.connected || BLE.busy || !BLE.sdkMod) return;
+        if (!BLE.connected || !BLE.sdkMod) return;
+        if (BLE.inflight || BLE.q.length) return;               // 이미 트래픽이 있으면 생략
         var DM = BLE.sdkMod.DisplayMode, r = BLE._kaRow % 10;
         BLE.devs.forEach(function (e) {
           if (!e.ready) return;
           var hex = e.lastSent[r] != null ? e.lastSent[r] : new Array(61).join('0');
-          try { BLE.sdk.displayLineData(r + 1, 0, hex, DM.GraphicMode, e.dev); } catch (x) {}
+          BLE.enqueue(e.dev, r + 1, hex, DM.GraphicMode);
         });
         BLE._kaRow++;
+        BLE.drain();
       }, 1000);
     },
     stopKeepAlive: function () { if (BLE._ka) { clearInterval(BLE._ka); BLE._ka = null; } },

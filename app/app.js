@@ -72,6 +72,9 @@
       dpFail: 'DotPad connection failed{e} — check the device is on and in range, then try again.',
       dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins). Starts at 1:1, where one braille dot lands on one pin. Keys: ◀▶ pan left/right (page prev/next at full view), F1/F2 up/down, F3/F4 zoom out/in.',
       dpFit: 'full page', dpOneToOne: '1:1 actual size', dpNoBrl: '⚠ braille unreadable',
+      dpLost: 'DotPad disconnected.',
+      dpReconn: 'DotPad disconnected — reconnecting… (attempt {n})',
+      dpReconnFail: 'Could not reconnect automatically. Turn the device off and on, then press "Connect DotPad" again.',
       dpBrlWarn: '⚠ At this zoom one pin covers {mm}mm, but braille dots are 2.34mm apart — dots merge and the labels cannot be read by touch. Press F4 to reach 1:1; the shape is still useful for orientation at this zoom.',
       dpKeysRb: 'DotPad connected — device keys: ◀▶ previous/next item, F1 resend, F2 first item, F3/F4 back/forward 10.',
       dl: { svg: 'SVG (embosser/Monarch)', pdf: 'PDF (print)', dtms: 'DotPad .dtms', brf: 'BRF key page', json: 'Save spec JSON', load: 'Open spec JSON' }
@@ -109,6 +112,9 @@
       dpFail: 'DotPad 연결 실패{e} — 기기 전원과 거리를 확인하고 다시 시도하세요.',
       dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀). 점자 도트 1개가 핀 1개에 떨어지는 1:1로 시작합니다. 기기 키: ◀▶ 좌우 이동(전체보기에선 이전/다음 페이지), F1/F2 위/아래, F3/F4 축소/확대.',
       dpFit: '전체보기', dpOneToOne: '1:1 실제 크기', dpNoBrl: '⚠ 점자 판독 불가',
+      dpLost: 'DotPad 연결이 끊겼습니다.',
+      dpReconn: 'DotPad 연결이 끊겨 다시 연결하는 중… ({n}번째 시도)',
+      dpReconnFail: '자동 재연결에 실패했습니다. 기기를 껐다 켠 뒤 "DotPad 연결"을 다시 눌러주세요.',
       dpBrlWarn: '⚠ 이 배율에서는 핀 1개가 {mm}mm를 맡는데 점자 도트 간격은 2.34mm입니다 — 도트가 한 핀에 뭉쳐 레이블을 손으로 읽을 수 없습니다. F4로 1:1까지 확대하세요. (이 배율은 전체 형태 파악용으로만 쓰세요.)',
       dpKeysRb: 'DotPad 연결됨 — 기기 키: ◀▶ 이전/다음 항목, F1 재전송, F2 처음으로, F3/F4 10개 뒤로/앞으로.',
       dl: { svg: 'SVG (엠보서/Monarch)', pdf: 'PDF (인쇄)', dtms: 'DotPad .dtms', brf: 'BRF 키 페이지', json: '스펙 저장 (JSON)', load: '스펙 불러오기' }
@@ -1449,7 +1455,10 @@
     if (s && s.error === 'no-bluetooth') dpMsg(t('dpNoBt'));
     else if (s && s.error === 'no-sdk') dpMsg(t('dpNoSdk'));
     else if (s && s.error === 'connect') dpMsg(t('dpFail').replace('{e}', s.detail ? ': ' + s.detail : ''));
+    else if (s && s.error === 'reconnect') dpMsg(t('dpReconnFail'));
     else if (s && s.askSdk) dpMsg(t('dpPickSdk'));
+    else if (s && s.reconnecting) dpMsg(t('dpReconn').replace('{n}', s.reconnecting));
+    else if (s && s.lost) dpMsg(t('dpLost'));
     dpChrome();
     if (s && s.connected != null) {
       if (s.connected > 0) dpMsg(null);       // 성공 → 안내 제거
