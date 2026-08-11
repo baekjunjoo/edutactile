@@ -169,6 +169,47 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
   ok('pan ▶ + F4 zooms without flipping the page',
     pageNav.afterCombo === pageNav.afterPan, `페이지 ${pageNav.afterPan} → ${pageNav.afterCombo}`);
 
+  // ── 8. 텍스트 페이지: 본문이 한 쪽(10줄)을 넘으면 기기가 자동으로 새 쪽을 따라간다 ──
+  await page.click('#gallery .gcat:has-text("Language Arts")');
+  await page.click('#gallery .card:has-text("Braille Text Page")');
+  await sleep(300);
+  const tpFollow = await page.evaluate(async () => {
+    const long = Array.from({ length: 26 }, (_, i) => 'line ' + (i + 1)).join('\n');  // 제목+본문 > 2쪽
+    const body = [...document.querySelectorAll('#form textarea, #form input[type=text]')].pop();
+    const ta = document.querySelector('#form textarea') || body;
+    ta.value = long;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 1400));
+    const st1 = JSON.stringify(window.__sim.deviceState());
+    const pageLabel1 = document.querySelector('#dpVp').textContent;
+    // 이어서 더 쓰면 (같은 쪽 안에서라도) 계속 마지막 쪽을 보여준다
+    ta.value = long + '\nline 27';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 1400));
+    const st2 = JSON.stringify(window.__sim.deviceState());
+    // 팬 ◀로 앞쪽을 보는 동안에는 입력이 있어도 쪽을 빼앗지 않는다
+    window.__key('PanningLeft');
+    await new Promise(r => setTimeout(r, 900));
+    const back = document.querySelector('#dpVp').textContent;
+    ta.value = long + '\nline 27 more';
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 1400));
+    const staying = document.querySelector('#dpVp').textContent;
+    // 팬 ▶로 마지막 쪽까지 가면 다시 입력을 따라간다
+    window.__key('PanningRight'); window.__key('PanningRight'); window.__key('PanningRight');
+    await new Promise(r => setTimeout(r, 900));
+    const fwd = document.querySelector('#dpVp').textContent;
+    return { pageLabel1, changed: st1 !== st2, back, staying, fwd };
+  });
+  const pg = s => { const m = String(s).match(/(\d+)\/(\d+)/); return m ? { p: +m[1], n: +m[2] } : null; };
+  const a1 = pg(tpFollow.pageLabel1), a2 = pg(tpFollow.staying), a3 = pg(tpFollow.fwd);
+  ok('typing past one page auto-advances the device to the newest page',
+    a1 && a1.n >= 3 && a1.p === a1.n, tpFollow.pageLabel1);
+  ok('continued typing keeps updating the device (screen changes)', tpFollow.changed);
+  ok('browsing back with pan ◀ is not yanked forward by typing',
+    a2 && a2.p < a2.n, tpFollow.staying);
+  ok('pan ▶ to the last page resumes following', a3 && a3.p === a3.n, tpFollow.fwd);
+
   await browser.close();
   console.log(`\n결과: ${pass} 통과 / ${fail} 실패`);
   process.exit(fail ? 1 : 0);

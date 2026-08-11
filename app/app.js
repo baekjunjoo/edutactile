@@ -74,6 +74,7 @@
       dpFail: 'DotPad connection failed{e} — check the device is on and in range, then try again.',
       dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins). Starts at 1:1, where one braille dot lands on one pin. Device keys: F1 left · F2 up · F3 down · F4 right · pan◀+F1 zoom out · pan▶+F4 zoom in · pan ◀▶ alone = previous/next page.',
       dpFit: 'full page', dpOneToOne: '1:1 actual size', dpNoBrl: '⚠ braille unreadable',
+      dpTextPage: 'DotPad · page {p}/{n} — follows your typing · pan ◀▶ to browse',
       dpLost: 'DotPad disconnected.',
       dpDiag: 'link: lines sent {sent} · device done {ack} · in flight {ka} · errors {err} · drops {lost}',
       dpReconn: 'DotPad disconnected — reconnecting… (attempt {n})',
@@ -117,6 +118,7 @@
       dpFail: 'DotPad 연결 실패{e} — 기기 전원과 거리를 확인하고 다시 시도하세요.',
       dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀). 점자 도트 1개가 핀 1개에 떨어지는 1:1로 시작합니다. 기기 키: F1 왼쪽 · F2 위 · F3 아래 · F4 오른쪽 · 좌패닝+F1 축소 · 우패닝+F4 확대 · 패닝 단독은 이전/다음 페이지.',
       dpFit: '전체보기', dpOneToOne: '1:1 실제 크기', dpNoBrl: '⚠ 점자 판독 불가',
+      dpTextPage: 'DotPad · {p}/{n}쪽 — 입력을 따라갑니다 · 패닝 ◀▶ 넘겨보기',
       dpLost: 'DotPad 연결이 끊겼습니다.',
       dpDiag: '줄 전송 {sent} · 기기 완료 {ack} · 처리 대기 {ka} · 오류 {err} · 끊김 {lost}',
       dpReconn: 'DotPad 연결이 끊겨 다시 연결하는 중… ({n}번째 시도)',
@@ -1442,7 +1444,7 @@
   };
 
   /* ── DotPad 실시간 연동 (dotpad-dev 계약: 마이크로배치 → 완성 프레임만 push) ── */
-  var dpNav = { idx: 0 };
+  var dpNav = { idx: 0, follow: true, userNav: false, textSig: null };
   var _dpFlushT = null;
   var DP_W = 60, DP_H = 40, DP_AR = DP_W / DP_H;      // 그래픽 핀 60×40
   /* 배율은 "핀 1개가 맡는 페이지 길이(mm)" 기준.
@@ -1481,7 +1483,7 @@
   function f2(n) { return Math.round(n * 100) / 100; }
 
   /* 미리보기 위에 기기 화면 범위 표시 */
-  function dpOverlay() {
+  function dpOverlay(textPageCount) {
     var box = $('#dpVp');
     if (!box) {   // draw()가 #preview를 새로 그리면 사라지므로 없으면 다시 만든다
       box = document.createElement('div'); box.id = 'dpVp';
@@ -1489,6 +1491,15 @@
     }
     var svg = $('#preview svg');
     var isText = state.spec && state.spec.textPage != null;
+    if (isText && dpConnected()) {        // 텍스트 페이지: 기기에 나가는 쪽 표시 (자동으로 입력을 따라간다)
+      box.style.display = 'block';
+      box.style.left = '14px'; box.style.top = '14px';
+      box.style.width = 'auto'; box.style.height = 'auto';
+      box.classList.remove('warn');
+      box.textContent = t('dpTextPage')
+        .replace('{p}', dpNav.idx + 1).replace('{n}', textPageCount || (dpNav.idx + 1));
+      return;
+    }
     if (!dpConnected() || !svg || !state.layout || rbMode() || isText) { box.style.display = 'none'; return; }
     var vp = dpViewport();
     var pr = $('#preview').getBoundingClientRect(), sr = svg.getBoundingClientRect();
@@ -1599,9 +1610,19 @@
     var B = DOTPAD.BLE;
     var tp = dpTextPages();
     if (tp) {                             // 텍스트 페이지: 점자 흐름 (팬 키로 쪽 넘김)
+      // 입력을 따라간다: 본문이 바뀌었고 사용자가 앞쪽을 보는 중이 아니면 새 글자가 있는 마지막 쪽으로
+      var sig = (state.spec.title && state.spec.title.text || '') + ' ' + state.spec.textPage;
+      if (dpNav.userNav) {
+        dpNav.userNav = false;
+        dpNav.idx = Math.max(0, Math.min(dpNav.idx, tp.length - 1));
+        dpNav.follow = dpNav.idx === tp.length - 1;   // 마지막 쪽까지 넘겨 두면 다시 따라간다
+      } else if (sig !== dpNav.textSig && dpNav.follow) {
+        dpNav.idx = tp.length - 1;
+      }
+      dpNav.textSig = sig;
       dpNav.idx = Math.max(0, Math.min(dpNav.idx, tp.length - 1));
       B.push(DOTPAD.encodeRows(tp[dpNav.idx]), null);
-      dpOverlay();
+      dpOverlay(tp.length);
       return;
     }
     if (rbMode()) {                       // 규정집: 항목 확대 화면 + 텍스트 라인에 표준 점자
@@ -1776,8 +1797,8 @@
    *          규정집: 팬 좌/우 = 이전/다음 항목, F1 = 재전송, F2 = 처음, F3/F4 = 10개 이전/다음 */
   function dpKey(key) {
     if (state.spec && state.spec.textPage != null) {      // 텍스트 페이지: 팬 키로 쪽 넘김
-      if (key === 'PanningRight') dpNav.idx++;
-      else if (key === 'PanningLeft') dpNav.idx--;
+      if (key === 'PanningRight') { dpNav.idx++; dpNav.userNav = true; }
+      else if (key === 'PanningLeft') { dpNav.idx--; dpNav.userNav = true; }
       else if (key === 'KeyFunction1') DOTPAD.BLE.devs.forEach(function (e) { e.lastSent = []; });
       dpNav.idx = Math.max(0, dpNav.idx);
       dpSchedule(true);
