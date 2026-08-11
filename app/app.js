@@ -71,13 +71,13 @@
       dpNoSdk: 'Could not load the DotPad SDK. Have DotPadSDK-3.0.0.js ready (it cannot be embedded for license reasons) and click "Connect DotPad" again — a file picker will ask for it.',
       dpPickSdk: '📂 Select the DotPadSDK-3.0.0.js file in the dialog that just opened. When this file is opened directly from disk, the browser blocks automatic loading, so a one-time manual selection is needed.',
       dpFail: 'DotPad connection failed{e} — check the device is on and in range, then try again.',
-      dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins). Starts at 1:1, where one braille dot lands on one pin. Device keys: F1 up · F2 left · F3 right · F4 down · pan◀+F1 zoom out · pan▶+F4 zoom in · pan ◀▶ alone = previous/next page.',
+      dpKeys: 'DotPad connected — the blue frame is what the device shows (60×40 pins). Starts at 1:1, where one braille dot lands on one pin. Device keys: F1 left · F2 up · F3 down · F4 right · pan◀+F1 zoom out · pan▶+F4 zoom in · pan ◀▶ alone = previous/next page.',
       dpFit: 'full page', dpOneToOne: '1:1 actual size', dpNoBrl: '⚠ braille unreadable',
       dpLost: 'DotPad disconnected.',
-      dpDiag: 'link: frames sent {sent} · keep-alive {ka} · device replies {ack} · errors {err} · drops {lost}',
+      dpDiag: 'link: lines sent {sent} · device done {ack} · in flight {ka} · errors {err} · drops {lost}',
       dpReconn: 'DotPad disconnected — reconnecting… (attempt {n})',
       dpReconnFail: 'Could not reconnect automatically. Turn the device off and on, then press "Connect DotPad" again.',
-      dpBrlWarn: '⚠ At this zoom one pin covers {mm}mm, but braille dots are 2.34mm apart — dots merge and the labels cannot be read by touch. Press F4 to reach 1:1; the shape is still useful for orientation at this zoom.',
+      dpBrlWarn: '⚠ At this zoom one pin covers {mm}mm, but braille dots are 2.34mm apart — dots merge and the labels cannot be read by touch. Use pan▶+F4 to reach 1:1; the shape is still useful for orientation at this zoom.',
       dpKeysRb: 'DotPad connected — device keys: ◀▶ previous/next item, F1 resend, F2 first item, F3/F4 back/forward 10.',
       dl: { svg: 'SVG (embosser/Monarch)', pdf: 'PDF (print)', dtms: 'DotPad .dtms', brf: 'BRF key page', json: 'Save spec JSON', load: 'Open spec JSON' }
     },
@@ -113,13 +113,13 @@
       dpNoSdk: 'DotPad SDK를 불러오지 못했습니다. DotPadSDK-3.0.0.js 파일을 준비한 뒤 "DotPad 연결"을 다시 누르세요 — 파일 선택 창이 열립니다 (라이선스상 내장 불가).',
       dpPickSdk: '📂 방금 열린 창에서 DotPadSDK-3.0.0.js 파일을 선택해주세요. 파일을 디스크에서 직접 열면 브라우저가 자동 불러오기를 막아서, 한 번만 직접 선택이 필요합니다.',
       dpFail: 'DotPad 연결 실패{e} — 기기 전원과 거리를 확인하고 다시 시도하세요.',
-      dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀). 점자 도트 1개가 핀 1개에 떨어지는 1:1로 시작합니다. 기기 키: F1 위 · F2 왼쪽 · F3 오른쪽 · F4 아래 · 좌패닝+F1 축소 · 우패닝+F4 확대 · 패닝 단독은 이전/다음 페이지.',
+      dpKeys: 'DotPad 연결됨 — 파란 테두리가 기기에 나오는 범위입니다 (60×40 핀). 점자 도트 1개가 핀 1개에 떨어지는 1:1로 시작합니다. 기기 키: F1 왼쪽 · F2 위 · F3 아래 · F4 오른쪽 · 좌패닝+F1 축소 · 우패닝+F4 확대 · 패닝 단독은 이전/다음 페이지.',
       dpFit: '전체보기', dpOneToOne: '1:1 실제 크기', dpNoBrl: '⚠ 점자 판독 불가',
       dpLost: 'DotPad 연결이 끊겼습니다.',
-      dpDiag: '화면 전송 {sent} · 연결 유지 {ka} · 기기 응답 {ack} · 오류 {err} · 끊김 {lost}',
+      dpDiag: '줄 전송 {sent} · 기기 완료 {ack} · 처리 대기 {ka} · 오류 {err} · 끊김 {lost}',
       dpReconn: 'DotPad 연결이 끊겨 다시 연결하는 중… ({n}번째 시도)',
       dpReconnFail: '자동 재연결에 실패했습니다. 기기를 껐다 켠 뒤 "DotPad 연결"을 다시 눌러주세요.',
-      dpBrlWarn: '⚠ 이 배율에서는 핀 1개가 {mm}mm를 맡는데 점자 도트 간격은 2.34mm입니다 — 도트가 한 핀에 뭉쳐 레이블을 손으로 읽을 수 없습니다. F4로 1:1까지 확대하세요. (이 배율은 전체 형태 파악용으로만 쓰세요.)',
+      dpBrlWarn: '⚠ 이 배율에서는 핀 1개가 {mm}mm를 맡는데 점자 도트 간격은 2.34mm입니다 — 도트가 한 핀에 뭉쳐 레이블을 손으로 읽을 수 없습니다. 우패닝+F4로 1:1까지 확대하세요. (이 배율은 전체 형태 파악용으로만 쓰세요.)',
       dpKeysRb: 'DotPad 연결됨 — 기기 키: ◀▶ 이전/다음 항목, F1 재전송, F2 처음으로, F3/F4 10개 뒤로/앞으로.',
       dl: { svg: 'SVG (엠보서/Monarch)', pdf: 'PDF (인쇄)', dtms: 'DotPad .dtms', brf: 'BRF 키 페이지', json: '스펙 저장 (JSON)', load: '스펙 불러오기' }
     }
@@ -1724,7 +1724,7 @@
     var s = B.stats;
     el.style.display = '';
     el.textContent = t('dpDiag')
-      .replace('{sent}', s.sent).replace('{ka}', s.ka).replace('{ack}', s.ack)
+      .replace('{sent}', s.sent).replace('{ka}', B.inflightTotal ? B.inflightTotal() : 0).replace('{ack}', s.ack)
       .replace('{err}', s.err).replace('{lost}', s.lost);
   }
   /* 점자가 뭉개지는 배율이면 제작자에게 경고 (산출물 사용자는 못 보는 문제라 화면에서 알려야 한다) */
@@ -1766,11 +1766,11 @@
       dpSchedule(true);
       return;
     }
-    // 방향키: F1 위 · F2 왼쪽 · F3 오른쪽 · F4 아래
-    if (key === 'KeyFunction1') { dpPan(0, -1); return; }
-    if (key === 'KeyFunction2') { dpPan(-1, 0); return; }
-    if (key === 'KeyFunction3') { dpPan(1, 0); return; }
-    if (key === 'KeyFunction4') { dpPan(0, 1); return; }
+    // 방향키: F1 왼쪽 · F2 위 · F3 아래 · F4 오른쪽 (키 물리 배치와 방향 일치)
+    if (key === 'KeyFunction1') { dpPan(-1, 0); return; }
+    if (key === 'KeyFunction2') { dpPan(0, -1); return; }
+    if (key === 'KeyFunction3') { dpPan(0, 1); return; }
+    if (key === 'KeyFunction4') { dpPan(1, 0); return; }
     // 조합키(SDK가 단일 이벤트로 보고): 좌패닝+F1 = 축소, 우패닝+F4 = 확대
     if (key === 'LPF1') { dpCancelPan(); dpZoomBy(-1); return; }
     if (key === 'RPF4') { dpCancelPan(); dpZoomBy(1); return; }

@@ -5,7 +5,7 @@
   "description": "촉각 교육자료 제작 도구 — TGIL-quality tactile graphics for sighted creators, blind learners",
   "scripts": {
     "build": "node build.js",
-    "test": "node test/template-audit.js && node test/param-effect.js && node test/ebrl-unit.js && node test/dotpad-sim.js && node test/dotpad-pacing.js && node test/dotpad-viewport.js && node test/dotpad-braille-legibility.js && node test/dotpad-fill.js && node test/dotpad-file-fallback.js && node test/e2e-feedback.js && node test/e2e-panel.js"
+    "test": "node test/template-audit.js && node test/param-effect.js && node test/ebrl-unit.js && node test/dotpad-sdk-patch.js && node test/dotpad-sim.js && node test/dotpad-pacing.js && node test/dotpad-viewport.js && node test/dotpad-braille-legibility.js && node test/dotpad-fill.js && node test/dotpad-file-fallback.js && node test/e2e-feedback.js && node test/e2e-panel.js"
   },
   "dependencies": {
     "pako": "^2.1.0",

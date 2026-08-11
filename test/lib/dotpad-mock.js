@@ -28,15 +28,20 @@ function createMockSdk(){
         setTimeout(()=>msgCb&&msgCb(dev,"Connected"),30);   /* 실기기처럼 비동기 Connected */
       },20));
     }
-    displayLineData(lineId,startCell,hex,mode,dev){log.push({dev,lineId,startCell,hex,mode,t:Date.now()});}
+    displayLineData(lineId,startCell,hex,mode,dev){
+      log.push({dev,lineId,startCell,hex,mode,t:Date.now()});
+      /* 패치된 실 SDK처럼 기기 처리 완료(Complete)를 앱 콜백으로 통지 — 역압 검증용.
+         sim.completeDelay로 느린 기기를 흉내 낼 수 있다. */
+      setTimeout(()=>msgCb&&msgCb(dev,"ResponseDisplayLineComplete",""),api.completeDelay);
+    }
     disconnect(dev){setTimeout(()=>msgCb&&msgCb(dev,"Disconnected"),10);}
   }
   class DotPadScanner{
     startBleScan(){return Promise.resolve({id:"SIM-"+Math.random().toString(36).slice(2,7),name:"DotPad320-SIM"});}
   }
-  return {
+  const api={
     module:{DotPadSDK,DotPadScanner,DisplayMode:{GraphicMode:"GraphicMode",TextMode:"TextMode"}},
-    log,order,
+    log,order,completeDelay:8,
     fireKey(key,dev){keyCb&&keyCb(dev||(log.length?log[log.length-1].dev:null),key);},
     fireMessage(code,dev){msgCb&&msgCb(dev,code);},
     deviceState(){
@@ -45,6 +50,7 @@ function createMockSdk(){
       return [...Array(10)].map((_,i)=>last[i]||"0".repeat(60));
     }
   };
+  return api;
 }
 
 /* 10행 hex(행당 30바이트) → 셀별 점 배열. 검증 인코딩: bit = y%4 + (x%2)*4, 셀 피치 3×4px */

@@ -50,7 +50,7 @@ const runs = row => {
   await page.evaluate(() => {
     window.__sim = window.__mock.createMockSdk();
     DOTPAD.BLE.loadSDK = () => Promise.resolve(window.__sim.module);
-    DOTPAD.BLE.MIN_INTERVAL = 5; DOTPAD.BLE.HEAVY_GAP = 20;
+    DOTPAD.BLE.MIN_INTERVAL = 5;
   });
   await page.click('#dpBtn');
   await page.waitForFunction(() => DOTPAD.BLE.readyCount() === 1);

@@ -24,7 +24,7 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
   await page.evaluate(() => {
     window.__sim = window.__mock.createMockSdk();
     DOTPAD.BLE.loadSDK = () => Promise.resolve(window.__sim.module);
-    DOTPAD.BLE.MIN_INTERVAL = 5; DOTPAD.BLE.HEAVY_GAP = 20;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
+    DOTPAD.BLE.MIN_INTERVAL = 5;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
     window.__key = k => window.__sim.fireKey(k, DOTPAD.BLE.devs[0].dev);
     window.__geo = () => {
       const b = document.querySelector('#dpVp').getBoundingClientRect();
@@ -68,33 +68,33 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
   ok('pan▶+F4 zooms in: frame shrinks', z2.geo.bw < fit.geo.bw * 0.75, `${Math.round(fit.geo.bw)} → ${Math.round(z2.geo.bw)}`);
   ok('device content changes on zoom', JSON.stringify(z2.state) !== JSON.stringify(fit.state));
 
-  // ── 4. 이동: F3 우 · F2 좌 · F4 아래 · F1 위 (1:1에서) ──
+  // ── 4. 이동: F4 우 · F1 좌 · F3 아래 · F2 위 (1:1에서 — 키 물리 배치와 방향 일치) ──
   await page.evaluate(() => window.__key('RPF4'));   // 1:1
   await sleep(700);
   const base = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState() }));
-  await page.evaluate(() => window.__key('KeyFunction3'));
+  await page.evaluate(() => window.__key('KeyFunction4'));
   await sleep(900);
   const right = await page.evaluate(() => ({ geo: window.__geo(), state: window.__sim.deviceState() }));
   // 이 페이지는 뷰포트보다 조금만 넓어 반 화면 이동이 가장자리에서 잘린다 (정상 동작)
-  ok('F3 moves frame right (clamped at page edge)',
+  ok('F4 moves frame right (clamped at page edge)',
     right.geo.bx > base.geo.bx + 20 && right.geo.bx + right.geo.bw <= right.geo.sw + 2,
     `${Math.round(base.geo.bx)} → ${Math.round(right.geo.bx)}, right edge ${Math.round(right.geo.bx + right.geo.bw)}/${Math.round(right.geo.sw)}`);
-  ok('F3 changes device content', JSON.stringify(right.state) !== JSON.stringify(base.state));
-  await page.evaluate(() => window.__key('KeyFunction4'));
+  ok('F4 changes device content', JSON.stringify(right.state) !== JSON.stringify(base.state));
+  await page.evaluate(() => window.__key('KeyFunction3'));
   await sleep(900);
   const down = await page.evaluate(() => window.__geo());
-  ok('F4 moves frame down', down.by > right.geo.by + right.geo.bh * 0.4, `${Math.round(right.geo.by)} → ${Math.round(down.by)}`);
-  await page.evaluate(() => window.__key('KeyFunction1'));
-  await sleep(900);
-  const up = await page.evaluate(() => window.__geo());
-  ok('F1 moves frame back up', Math.abs(up.by - right.geo.by) < 3, `${Math.round(down.by)} → ${Math.round(up.by)}`);
+  ok('F3 moves frame down', down.by > right.geo.by + right.geo.bh * 0.4, `${Math.round(right.geo.by)} → ${Math.round(down.by)}`);
   await page.evaluate(() => window.__key('KeyFunction2'));
   await sleep(900);
+  const up = await page.evaluate(() => window.__geo());
+  ok('F2 moves frame back up', Math.abs(up.by - right.geo.by) < 3, `${Math.round(down.by)} → ${Math.round(up.by)}`);
+  await page.evaluate(() => window.__key('KeyFunction1'));
+  await sleep(900);
   const back = await page.evaluate(() => window.__geo());
-  ok('F2 moves frame back left', back.bx < right.geo.bx - 20 && back.bx >= -2, `${Math.round(right.geo.bx)} → ${Math.round(back.bx)}`);
+  ok('F1 moves frame back left', back.bx < right.geo.bx - 20 && back.bx >= -2, `${Math.round(right.geo.bx)} → ${Math.round(back.bx)}`);
 
   // ── 5. 프레임은 페이지 밖으로 나가지 않는다 (클램프) ──
-  for (let i = 0; i < 8; i++) { await page.evaluate(() => window.__key('KeyFunction3')); await sleep(120); }
+  for (let i = 0; i < 8; i++) { await page.evaluate(() => window.__key('KeyFunction4')); await sleep(120); }
   await sleep(700);
   const edge = await page.evaluate(() => window.__geo());
   ok('frame clamps at page edge', edge.bx + edge.bw <= edge.sw + 2, `right edge ${Math.round(edge.bx + edge.bw)} vs page ${Math.round(edge.sw)}`);

@@ -1,6 +1,6 @@
 /* DotPad BLE 계약 검증 (dotpad-simulator 하네스, Playwright/Chromium)
  * 검증 항목: 콜백 선등록, Connected 게이트, 행단위 전송만, 점형 일치,
- * 행 차분, keep-alive, 팬/F1 키 라우팅, 다중 기기 미러링·부분 해제 */
+ * 행 차분, 대기 무전송·역압, 팬/F1 키 라우팅, 다중 기기 미러링·부분 해제 */
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require(process.env.PLAYWRIGHT_PATH || '/home/claude/.npm-global/lib/node_modules/playwright');
@@ -35,7 +35,7 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
   await page.evaluate(() => {
     window.__sim = window.__mock.createMockSdk();
     DOTPAD.BLE.loadSDK = () => Promise.resolve(window.__sim.module);
-    DOTPAD.BLE.MIN_INTERVAL = 5; DOTPAD.BLE.HEAVY_GAP = 20;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
+    DOTPAD.BLE.MIN_INTERVAL = 5;   // 테스트 가속 (실제 기본값 200ms는 별도 항목에서 검증)
   });
   await page.click('#dpBtn');
 
@@ -77,9 +77,8 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
   ok('initial frame matches item 1 enlarged grid', JSON.stringify(first.state) === JSON.stringify(first.exp0));
   ok('text line matches item 1 standard braille', first.lastText === first.expT0, first.lastText);
 
-  // 3. 행 차분: 동일 프레임 재push → 무전송 (keep-alive 격리)
+  // 3. 행 차분: 동일 프레임 재push → 무전송
   const diff = await page.evaluate(async () => {
-    DOTPAD.BLE.stopKeepAlive();
     const len0 = window.__sim.log.length;
     DOTPAD.BLE.push(DOTPAD.BLE.devs[0].lastSent.slice(), DOTPAD.BLE.devs[0].lastText);
     await new Promise(r => setTimeout(r, 700));
@@ -87,16 +86,15 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
   });
   ok('row diff: identical frame → 0 resends', diff === 0, diff);
 
-  // 4. keep-alive: 1초마다 1행 재전송, 내용 불변
-  const ka = await page.evaluate(async () => {
-    const len0 = window.__sim.log.length, st0 = JSON.stringify(window.__sim.deviceState());
-    DOTPAD.BLE.startKeepAlive();
+  // 4. 대기 상태 = 완전한 무전송 (keep-alive 없음 — 매초 SDK를 흔들어 restart를 유발해 끊김의 공범이었다)
+  //    + 역압: 보낸 줄 수만큼 Complete가 돌아와 inflight가 0으로 소진된다
+  const idle = await page.evaluate(async () => {
+    const len0 = window.__sim.log.length;
     await new Promise(r => setTimeout(r, 2300));
-    DOTPAD.BLE.stopKeepAlive();
-    return { sent: window.__sim.log.length - len0, same: st0 === JSON.stringify(window.__sim.deviceState()) };
+    return { sent: window.__sim.log.length - len0, inflight: DOTPAD.BLE.inflightTotal() };
   });
-  ok('keep-alive resends ~1 row/s (quiet right after a frame)', ka.sent >= 1 && ka.sent <= 4, ka.sent);
-  ok('keep-alive does not alter screen', ka.same);
+  ok('idle → zero traffic (no keep-alive)', idle.sent === 0, idle.sent);
+  ok('backpressure: inflight drained to 0 by device Complete', idle.inflight === 0, idle.inflight);
 
   // 5. 팬 키 라우팅: PanningRight → 항목 2, PanningLeft → 항목 1
   await page.evaluate(() => window.__sim.fireKey('PanningRight', DOTPAD.BLE.devs[0].dev));
@@ -141,9 +139,9 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
   const off = await page.evaluate(async () => {
     DOTPAD.BLE.disconnectAll();
     await new Promise(r => setTimeout(r, 100));
-    return { connected: DOTPAD.BLE.connected, ka: DOTPAD.BLE._ka, off: document.querySelector('#dpOff').style.display };
+    return { connected: DOTPAD.BLE.connected, off: document.querySelector('#dpOff').style.display };
   });
-  ok('disconnectAll → not connected, keep-alive stopped', off.connected === false && off.ka === null);
+  ok('disconnectAll → not connected', off.connected === false);
 
   await browser.close();
   console.log(`\n결과: ${pass} 통과 / ${fail} 실패`);
