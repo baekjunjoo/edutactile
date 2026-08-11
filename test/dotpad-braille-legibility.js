@@ -11,7 +11,7 @@ let pass = 0, fail = 0;
 const ok = (n, c, x) => { if (c) { pass++; console.log('  ✔', n); } else { fail++; console.log('  ✘', n, x !== undefined ? '→ ' + x : ''); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 /* 전송 큐가 비고 in-flight가 없을 때까지 (한 줄씩 보내므로 프레임 완성까지 기다린다) */
-const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOTPAD.BLE.pendingRows == null && DOTPAD.BLE.pendingText == null, null, { timeout: 20000 }); await sleep(80); };
+const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOTPAD.BLE.pendingRows == null && DOTPAD.BLE.pendingText == null && DOTPAD.BLE.inflightTotal() === 0, null, { timeout: 20000 }); await sleep(80); };
 
 /* 10행 hex → 60×40 0/1 그리드 (인코딩 bit = y%4 + (x%2)*4 역산) */
 function rowsToGrid(rows) {
@@ -153,6 +153,42 @@ function blobs(g) {
   const d2 = await decodeLabel(g2);
   ok('2× — braille still matches the translator (device pitch, not scaled)',
     JSON.stringify(d2.cells) === JSON.stringify(info.expect), JSON.stringify(d2.cells.slice(0, 4)));
+
+  // ── 수학 템플릿(수직선): 축 눈금은 label 타입 — 기기에서 통째로 빠지던 회귀 ──
+  await page.click('#gallery .gcat:has-text("Mathematics")');
+  await page.click('#gallery .card:has-text("Number Line")');
+  await sleep(900); await waitIdle(page);
+  const tick = await page.evaluate(() => {
+    const spec = JSON.parse(document.querySelector('#json').value);
+    const labels = spec.elements.filter(e => e.type === 'label' && e._labelMm && e._cells);
+    const m = labels[Math.floor(labels.length / 2)];     // 가운데 눈금 하나
+    return m ? { text: m.text, at: m._labelMm, expect: m._cells, cells: m._cells.length } : null;
+  });
+  ok('math template: tick labels carry stamp annotations (_labelMm/_cells)', !!tick, JSON.stringify(tick));
+  if (tick) {
+    await page.evaluate(([x, y]) => {
+      DOTPAD.BLE.devs.forEach(d => { d.lastSent = []; d.lastText = null; });
+      window.__setView(1, x, y);
+    }, tick.at);
+    await sleep(1100);
+    const gm = rowsToGrid(await page.evaluate(() => window.__sim.deviceState()));
+    const vp = await page.evaluate(() => window.__dpInfo().vp);
+    const wPins = tick.cells * 3 - 1;
+    const x0 = Math.round((tick.at[0] - vp.x) * (60 / vp.w) - wPins / 2);
+    const y0 = Math.round((tick.at[1] - vp.y) * (40 / vp.h) - 1);
+    const got = [];
+    for (let ci = 0; ci < tick.cells; ci++) {
+      const dots = [];
+      [[0, 0, 1], [0, 1, 2], [0, 2, 3], [1, 0, 4], [1, 1, 5], [1, 2, 6]].forEach(([col, row, d]) => {
+        const r = gm[y0 + row];
+        if (r && r[x0 + ci * 3 + col]) dots.push(d);
+      });
+      got.push(dots.sort((a, b) => a - b));
+    }
+    ok(`math template: tick "${tick.text}" braille reaches the device pins`,
+      JSON.stringify(got) === JSON.stringify(tick.expect),
+      `기기 ${JSON.stringify(got)} vs 점역 ${JSON.stringify(tick.expect)}`);
+  }
 
   await browser.close();
   console.log(`\n결과: ${pass} 통과 / ${fail} 실패`);

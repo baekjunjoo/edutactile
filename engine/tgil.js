@@ -436,6 +436,8 @@
           if (e.anchor === 'end') lx -= sz.w;
           body.push('<g fill="#000">' + brailleSVG(cells, lx, ly - sz.h / 2) + '</g>');
           body.push(inkText(spec, e.text, lx + sz.w / 2, ly + sz.h / 2 + 0.8));
+          e._cells = cells; e._size = sz;
+          e._labelMm = [lx + sz.w / 2, ly];   // 기기 점자 스탬핑 + 편집 히트 영역용 (축 눈금 등)
           break;
         }
       }

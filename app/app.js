@@ -1638,7 +1638,9 @@
   function dpLabels() {
     var out = [];
     (state.spec && state.spec.elements || []).forEach(function (e) {
-      if ((e.type === 'dimension' || e.type === 'leader') && e._labelMm && e._cells && e._cells.length)
+      // label(축 눈금 등)도 포함 — 수학 템플릿의 점자가 기기에서 통째로 빠지던 원인
+      if ((e.type === 'dimension' || e.type === 'leader' || e.type === 'label') &&
+          e._labelMm && e._cells && e._cells.length)
         out.push({ cells: e._cells, at: e._labelMm });
     });
     var L = state.layout;

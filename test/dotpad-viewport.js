@@ -9,7 +9,7 @@ let pass = 0, fail = 0;
 const ok = (n, c, x) => { if (c) { pass++; console.log('  ✔', n); } else { fail++; console.log('  ✘', n, x !== undefined ? '→ ' + x : ''); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 /* 전송 큐가 비고 in-flight가 없을 때까지 (한 줄씩 보내므로 프레임 완성까지 기다린다) */
-const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOTPAD.BLE.pendingRows == null && DOTPAD.BLE.pendingText == null, null, { timeout: 20000 }); await sleep(80); };
+const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOTPAD.BLE.pendingRows == null && DOTPAD.BLE.pendingText == null && DOTPAD.BLE.inflightTotal() === 0, null, { timeout: 20000 }); await sleep(80); };
 
 (async () => {
   const browser = await chromium.launch();
