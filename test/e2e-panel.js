@@ -191,6 +191,7 @@ async function titlePos(page) {
   await page.waitForSelector('#form textarea');
   const tpForm = await page.evaluate(() => [...document.querySelectorAll('#form .frow span')].map(s => s.textContent));
   ok('text page: single Heading field (no duplicate)', tpForm.filter(x => /Heading|제목/.test(x)).length === 1, JSON.stringify(tpForm));
+  await page.fill('#form textarea', '');      // 기본 예시 문장을 지우고 입력
   await page.focus('#form textarea');
   await page.type('#form textarea', 'lesson goal');
   await sleep(500);

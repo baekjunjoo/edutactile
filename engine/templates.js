@@ -727,7 +727,9 @@
     name: { en: 'Braille Text Page', ko: '점자 텍스트 페이지' },
     params: [
       { key: 'heading', label: { en: 'Heading', ko: '제목' }, type: 'text', default: '' },
-      { key: 'body', label: { en: 'Body text', ko: '본문' }, type: 'textarea', default: '' }
+      // 빈 기본값은 선택하자마자 빈 페이지가 나와 고장처럼 보인다 — 바로 지우고 쓰면 되는 예시 문장
+      { key: 'body', label: { en: 'Body text', ko: '본문' }, type: 'textarea',
+        default: '여기에 수업 내용을 적으세요. 한 줄이 점자 한 줄이 됩니다.' }
     ],
     build: function (p, lang) {
       return {

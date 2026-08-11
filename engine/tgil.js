@@ -162,6 +162,24 @@
       if (need2 > bands[e.side]) bands[e.side] = need2;
     });
 
+    /* 오프셋 레이블(축 눈금 등): 도면 가장자리에 붙어 바깥으로 나가는 만큼 자리를 예약한다.
+     * 이게 없으면 y축 숫자가 용지 밖으로 나가 엠보싱·인쇄에서 잘린다. */
+    var EPS = 1e-6;
+    spec.elements.forEach(function (e) {
+      if (e.type !== 'label' || e.text == null) return;
+      var cells = translate(e.text, spec.brailleCode), sz = labelSize(cells);
+      var ox = (e.offsetMm && e.offsetMm[0]) || 0, oy = (e.offsetMm && e.offsetMm[1]) || 0;
+      var x1, x2;                                        // 앵커 기준 가로 범위
+      if (e.anchor === 'end') { x1 = ox - sz.w; x2 = ox; }
+      else if (e.anchor === 'middle') { x1 = ox - sz.w / 2; x2 = ox + sz.w / 2; }
+      else { x1 = ox; x2 = ox + sz.w; }
+      var below = -oy + sz.h / 2, above = oy + sz.h / 2;  // 화면 아래가 +
+      if (e.at[0] <= bbPre.x0 + EPS) bands.left = Math.max(bands.left, -x1 + 2);
+      if (e.at[0] >= bbPre.x0 + bbPre.w - EPS) bands.right = Math.max(bands.right, x2 + 2);
+      if (e.at[1] <= bbPre.y0 + EPS) bands.bottom = Math.max(bands.bottom, below + 2);
+      if (e.at[1] >= bbPre.y0 + bbPre.h - EPS) bands.top = Math.max(bands.top, above + 2);
+    });
+
     var draw = {
       x: inner.x + bands.left,
       y: inner.y + titleH + bands.top,

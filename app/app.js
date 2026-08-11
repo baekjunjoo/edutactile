@@ -55,6 +55,7 @@
       paper: 'Paper size', ink: 'Print text (묵자) alongside braille',
       inkScreen: 'Screen only (for checking)', inkPrint: 'Include in print/export', inkOff: 'Off',
       dims: 'Dimension labels (editable)', dimUnit: 'Unit (applies to all)',
+      seqPreview: 'This template builds a {n}-page lesson — showing page 1. Press "Generate sequence" to create all pages.',
       seq: 'Lesson sequence', seqEmpty: 'No pages yet — build a diagram, then "Add as page".',
       addPage: '+ Add as page', savePage: '✓ Save to page', genSeq: 'Generate sequence',
       open: 'Open', dup: 'Copy', descPh: 'Page description (spoken on DotPad)',
@@ -96,6 +97,7 @@
       paper: '용지 크기', ink: '묵자 병기 (점자 옆 일반 글자)',
       inkScreen: '화면에만 (검증용)', inkPrint: '인쇄물에도 포함', inkOff: '끄기',
       dims: '치수 레이블 (수정 가능)', dimUnit: '단위 (전체 일괄 적용)',
+      seqPreview: '이 템플릿은 {n}쪽짜리 레슨을 만듭니다 — 지금은 1쪽 미리보기입니다. "시퀀스 생성"을 누르면 전체가 만들어집니다.',
       seq: '레슨 시퀀스', seqEmpty: '아직 페이지 없음 — 도면을 만들고 "페이지로 추가"를 누르세요.',
       addPage: '+ 페이지로 추가', savePage: '✓ 이 페이지에 저장', genSeq: '시퀀스 생성',
       open: '열기', dup: '복제', descPh: '페이지 설명 (DotPad에서 음성으로 읽힘)',
@@ -956,6 +958,12 @@
         spec = (state.tpl === TRACE_TPL)
           ? buildTraceSpec(readParams())
           : state.tpl.build(readParams(), textLang);
+        // 시퀀스 템플릿의 build는 스펙이 아니라 페이지 배열을 준다 —
+        // 첫 페이지를 미리보기로 보여주고 생성 버튼을 안내한다 (예전엔 배열을 렌더해 오류)
+        if (state.tpl.sequence && Array.isArray(spec)) {
+          state.extraReport.push(t('seqPreview').replace('{n}', spec.length));
+          spec = spec.length ? JSON.parse(JSON.stringify(spec[0].spec)) : null;
+        }
       }
       if (!spec) { $('#preview').innerHTML = ''; $('#report').innerHTML = '<li>' + (state.extraReport[0] || '') + '</li>'; return; }
       spec.brailleCode = state.brailleLang === 'nemeth' ? 'nemeth' : (state.brailleLang === 'ko' ? 'ko' : 'ueb');
@@ -1453,7 +1461,8 @@
       $('#preview').appendChild(box);
     }
     var svg = $('#preview svg');
-    if (!dpConnected() || !svg || !state.layout || rbMode()) { box.style.display = 'none'; return; }
+    var isText = state.spec && state.spec.textPage != null;
+    if (!dpConnected() || !svg || !state.layout || rbMode() || isText) { box.style.display = 'none'; return; }
     var vp = dpViewport();
     var pr = $('#preview').getBoundingClientRect(), sr = svg.getBoundingClientRect();
     var sx = sr.width / vp.page.w, sy = sr.height / vp.page.h;
@@ -1520,8 +1529,54 @@
       if (dpConnected()) dpPushFrame();
     }, fast ? 60 : 450);
   }
+  /* 점자 텍스트 페이지 → 기기 점자 흐름 (20셀 × 10줄, 셀 전진 3핀·행 전진 4핀).
+   * 도면처럼 래스터라이즈하면 본문 점자가 제거돼 제목만 나간다 — 텍스트는 셀로 찍어야 읽힌다. */
+  function dpTextPages() {
+    var sp = state.spec;
+    if (!sp || sp.textPage == null) return null;
+    var code = sp.brailleCode || 'ueb', lines = [], src = [];
+    if (sp.title && sp.title.text) { src.push(sp.title.text); src.push(''); }
+    String(sp.textPage || '').split('\n').forEach(function (l) { src.push(l); });
+    src.forEach(function (para) {
+      if (!String(para).trim()) { lines.push([]); return; }
+      var cur = [];
+      String(para).split(/\s+/).forEach(function (w) {
+        var wc;
+        try { wc = TGIL.translate(w, code); } catch (e) { wc = []; }
+        if (!wc.length) return;
+        if (cur.length && cur.length + 1 + wc.length > 20) { lines.push(cur); cur = []; }
+        if (cur.length) cur.push([]);                       // 단어 사이 빈 셀
+        wc.forEach(function (c) { if (cur.length < 20) cur.push(c); });
+      });
+      if (cur.length) lines.push(cur);
+    });
+    var pages = [];
+    for (var i = 0; i < lines.length; i += 10) {
+      var g = [];
+      for (var y = 0; y < DP_H; y++) g.push(new Array(DP_W).fill(0));
+      lines.slice(i, i + 10).forEach(function (line, li) {
+        line.forEach(function (cell, ci) {
+          (cell || []).forEach(function (d) {
+            var col = d >= 4 ? 1 : 0, row = (d - 1) % 3;
+            var px = ci * 3 + col, py = li * 4 + row;
+            if (px < DP_W && py < DP_H) g[py][px] = 1;
+          });
+        });
+      });
+      pages.push(g);
+    }
+    return pages.length ? pages : null;
+  }
+
   function dpPushFrame() {
     var B = DOTPAD.BLE;
+    var tp = dpTextPages();
+    if (tp) {                             // 텍스트 페이지: 점자 흐름 (팬 키로 쪽 넘김)
+      dpNav.idx = Math.max(0, Math.min(dpNav.idx, tp.length - 1));
+      B.push(DOTPAD.encodeRows(tp[dpNav.idx]), null);
+      dpOverlay();
+      return;
+    }
     if (rbMode()) {                       // 규정집: 항목 확대 화면 + 텍스트 라인에 표준 점자
       var items = rbItems();
       if (!items.length) return;
@@ -1691,6 +1746,14 @@
   /* 키 배치 — 도면: 팬 좌/우 = 좌우 이동(확대 없으면 이전/다음 페이지), F1/F2 = 위/아래, F3/F4 = 축소/확대
    *          규정집: 팬 좌/우 = 이전/다음 항목, F1 = 재전송, F2 = 처음, F3/F4 = 10개 이전/다음 */
   function dpKey(key) {
+    if (state.spec && state.spec.textPage != null) {      // 텍스트 페이지: 팬 키로 쪽 넘김
+      if (key === 'PanningRight') dpNav.idx++;
+      else if (key === 'PanningLeft') dpNav.idx--;
+      else if (key === 'KeyFunction1') DOTPAD.BLE.devs.forEach(function (e) { e.lastSent = []; });
+      dpNav.idx = Math.max(0, dpNav.idx);
+      dpSchedule(true);
+      return;
+    }
     if (rbMode()) {
       var n = rbItems().length;
       if (key === 'PanningRight') dpNav.idx++;

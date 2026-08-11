@@ -2,7 +2,19 @@
 const fs = require('fs');
 const RULEBOOK = require('../rulebook/rulebook.js');
 const EBRL = require('../rulebook/ebrl.js');
-const E = require('/root/.claude/skills/ebraille-format/lib/ebraille.js');
+/* ebraille-format 스킬 위치는 환경마다 다르다 (동기화 폴더가 바뀐 적이 있어 후보를 훑는다) */
+const E = (function () {
+  const home = process.env.HOME || '/root';
+  const cands = [
+    home + '/.claude/skills/synced/ebraille-format/lib/ebraille.js',
+    home + '/.claude/skills/ebraille-format/lib/ebraille.js',
+    '/root/.claude/skills/synced/ebraille-format/lib/ebraille.js',
+    '/root/.claude/skills/ebraille-format/lib/ebraille.js'
+  ];
+  for (const p of cands) if (fs.existsSync(p)) return require(p);
+  console.log('  ⚠ ebraille-format 스킬을 찾지 못해 건너뜁니다 (환경 문제, 제품 결함 아님)');
+  process.exit(0);
+})();
 
 const data = JSON.parse(fs.readFileSync(__dirname + '/../rulebook/arabic-709.json', 'utf8'));
 const d = RULEBOOK.normalize(data, {});
