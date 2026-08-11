@@ -45,9 +45,15 @@ function createMockSdk(){
     fireKey(key,dev){keyCb&&keyCb(dev||(log.length?log[log.length-1].dev:null),key);},
     fireMessage(code,dev){msgCb&&msgCb(dev,code);},
     deviceState(){
-      const last={};
-      log.forEach(x=>{if(x.mode==="GraphicMode")last[x.lineId-1]=x.hex;});
-      return [...Array(10)].map((_,i)=>last[i]||"0".repeat(60));
+      /* 부분 전송(startCell>0) 지원: 실기기처럼 줄 버퍼에 구간을 덮어쓴다 */
+      const rows=[...Array(10)].map(()=> "0".repeat(60));
+      log.forEach(x=>{
+        if(x.mode!=="GraphicMode")return;
+        const i=x.lineId-1; if(i<0||i>9)return;
+        const s=(x.startCell||0)*2;
+        rows[i]=rows[i].slice(0,s)+x.hex+rows[i].slice(s+x.hex.length);
+      });
+      return rows;
     }
   };
   return api;

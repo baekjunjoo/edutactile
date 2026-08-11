@@ -314,6 +314,7 @@
     LINE_TIMEOUT: 1200, TMO_LIMIT: 3, PING_IDLE: 15000, SELF_CLOCK: 160,
     LINE_GAP: 120, GAP_ROWS: 6,   // 전 행 교체급 프레임은 줄 사이 쉼표 — 연속 핀 구동으로 기기가 침묵하는 것 방지
     GAP_STEP: 80, GAP_MAX: 480,   // 적응형: 예기치 않은 끊김마다 쉼표를 늘린다 (기기가 버티는 페이스로 자가 수렴)
+    PARTIAL: true,                // 줄에서 바뀐 셀 구간만 전송 (구동량 절감 — 문제 시 콘솔에서 false로 A/B)
     stats: { sent: 0, ka: 0, ack: 0, err: 0, lost: 0, reconn: 0 },
     inflightTotal: function () {
       var n = 0;
@@ -345,9 +346,18 @@
         if (!e.ready) return;
         var q = [];
         if (rows) rows.forEach(function (hex, r) {
-          if (e.lastSent[r] !== hex) q.push({ line: r + 1, hex: hex, text: false });
+          var old = e.lastSent[r];
+          if (old === hex) return;
+          var it = { line: r + 1, hex: hex, full: hex, start: 0, text: false };
+          if (BLE.PARTIAL && old && old.length === hex.length) {
+            var c0 = -1, c1 = -1;                       // 바뀐 셀 구간만 잘라 보낸다 (구동량 절감)
+            for (var c = 0; c < hex.length; c += 2)
+              if (hex.substr(c, 2) !== old.substr(c, 2)) { if (c0 < 0) c0 = c; c1 = c; }
+            if (c0 >= 0) { it.start = c0 / 2; it.hex = hex.slice(c0, c1 + 2); }
+          }
+          q.push(it);
         });
-        if (text != null && e.lastText !== text) q.push({ line: 0, hex: text, text: true });
+        if (text != null && e.lastText !== text) q.push({ line: 0, hex: text, full: text, start: 0, text: true });
         if (q.length) {
           e.queue = q;                                         // 남은 옛 diff는 버린다 — 최신 화면만
           e.gap = q.length >= BLE.GAP_ROWS ? BLE.LINE_GAP : 0; // 무거운 프레임만 줄 사이 쉼표
@@ -373,10 +383,10 @@
       var DM = BLE.sdkMod.DisplayMode;
       e.awaiting = { t: Date.now(), it: it };
       BLE.stats.sent++;
-      BLE.log('send', (it.text ? 'text' : 'L' + it.line));
+      BLE.log('send', (it.text ? 'text' : 'L' + it.line) + (it.start ? '@' + it.start + '+' + it.hex.length / 2 : ''));
       try {
-        BLE.sdk.displayLineData(it.line, 0, it.hex, it.text ? DM.TextMode : DM.GraphicMode, e.dev);
-        if (it.text) e.lastText = it.hex; else e.lastSent[it.line - 1] = it.hex;
+        BLE.sdk.displayLineData(it.line, it.start || 0, it.hex, it.text ? DM.TextMode : DM.GraphicMode, e.dev);
+        if (it.text) e.lastText = it.full; else e.lastSent[it.line - 1] = it.full;
       } catch (err) {
         BLE.errCount++; BLE.stats.err++; e.awaiting = null;
         BLE.log('send-error', err && err.message);

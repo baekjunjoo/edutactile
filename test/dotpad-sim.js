@@ -63,16 +63,17 @@ const waitIdle = async p => { await p.waitForFunction(() => window.DOTPAD && DOT
     const log = window.__sim.log;
     return {
       total: log.length,
-      badLine: log.filter(x => x.lineId < 0 || x.lineId > 10 || x.startCell !== 0).length,
-      badHex: log.filter(x => x.mode === 'GraphicMode' && x.hex.length !== 60).length,
+      badLine: log.filter(x => x.lineId < 0 || x.lineId > 10 || x.startCell < 0 || x.startCell > 29).length,
+      badHex: log.filter(x => x.mode === 'GraphicMode' &&
+        (x.hex.length % 2 || x.startCell * 2 + x.hex.length > 60)).length,
       textSent: log.filter(x => x.mode === 'TextMode' && x.lineId === 0).length,
       state: window.__sim.deviceState(),
       lastText: DOTPAD.BLE.devs[0].lastText,
       exp0: expRows(0), expT0: expText(0), exp1: expRows(1), expT1: expText(1)
     };
   });
-  ok('row-based displayLineData only (lineId 0–10, startCell 0)', first.total > 0 && first.badLine === 0, first.badLine);
-  ok('graphic rows are 30 bytes (60 hex chars)', first.badHex === 0, first.badHex);
+  ok('row-based displayLineData only (lineId 0–10, valid cell span)', first.total > 0 && first.badLine === 0, first.badLine);
+  ok('graphic spans stay inside the 30-cell row', first.badHex === 0, first.badHex);
   ok('text line (lineId 0, TextMode) sent', first.textSent >= 1);
   ok('initial frame matches item 1 enlarged grid', JSON.stringify(first.state) === JSON.stringify(first.exp0));
   ok('text line matches item 1 standard braille', first.lastText === first.expT0, first.lastText);
