@@ -251,6 +251,10 @@
         var lost = code === 'Disconnected' && !BLE.userClosed;
         if (lost) {
           BLE.stats.lost++;
+          if (BLE.LINE_GAP < BLE.GAP_MAX) {     // 적응형 백오프: 끊길수록 더 조심스러운 페이스로
+            BLE.LINE_GAP += BLE.GAP_STEP;
+            BLE.log('gap-up', BLE.LINE_GAP + 'ms');
+          }
           if (typeof console !== 'undefined') console.warn('[DotPad] 링크 끊김 — 직전 이벤트:\n' + BLE.dumpTrace().split('\n').slice(-25).join('\n'));
         }
         BLE.status({ connected: BLE.readyCount(), lost: lost });
@@ -309,6 +313,7 @@
     lastFrame: null,                       // 현재 화면 (재연결 후 다시 그리기의 진실 원본)
     LINE_TIMEOUT: 1200, TMO_LIMIT: 3, PING_IDLE: 15000, SELF_CLOCK: 160,
     LINE_GAP: 120, GAP_ROWS: 6,   // 전 행 교체급 프레임은 줄 사이 쉼표 — 연속 핀 구동으로 기기가 침묵하는 것 방지
+    GAP_STEP: 80, GAP_MAX: 480,   // 적응형: 예기치 않은 끊김마다 쉼표를 늘린다 (기기가 버티는 페이스로 자가 수렴)
     stats: { sent: 0, ka: 0, ack: 0, err: 0, lost: 0, reconn: 0 },
     inflightTotal: function () {
       var n = 0;
@@ -419,9 +424,58 @@
     },
     stopWatchdog: function () { if (BLE._wd) { clearInterval(BLE._wd); BLE._wd = null; } },
 
+    /* ── 실기기 부하 한계 측정 (콘솔에서 실행) ──
+     * DOTPAD.BLE.stress()                    기본: 전면 프레임 30장, 현재 LINE_GAP
+     * DOTPAD.BLE.stress(50, 300)             50장, 줄 사이 300ms로
+     * 체커보드 A/B를 번갈아 보내(매 프레임 전 핀 반전 = 최악 부하) 몇 장째에서,
+     * 몇 줄째에서 기기가 침묵하는지 잰다. 끊기지 않고 완주하면 그 페이스는 안전.
+     * 서로 다른 gap으로 몇 번 돌리면 기기가 버티는 한계 페이스가 몇 분 만에 나온다. */
+    _stressOn: false,
+    stress: function (frames, gapMs) {
+      if (!BLE.connected) { console.log('먼저 DotPad를 연결하세요.'); return; }
+      if (BLE._stressOn) { console.log('이미 실행 중'); return; }
+      frames = frames || 30;
+      var gap0 = BLE.LINE_GAP;
+      if (gapMs != null) BLE.LINE_GAP = gapMs;
+      BLE._stressOn = true;
+      var A = [], B = [];
+      for (var r = 0; r < 10; r++) {
+        var a = '', b = '';
+        for (var c = 0; c < 30; c++) { var odd = (r + c) % 2; a += odd ? 'FF' : '00'; b += odd ? '00' : 'FF'; }
+        A.push(a); B.push(b);
+      }
+      var i = 0, t0 = Date.now(), sent0 = BLE.stats.sent, ack0 = BLE.stats.ack, lost0 = BLE.stats.lost;
+      console.log('부하 테스트 시작 — 전면 반전 ' + frames + '장, LINE_GAP ' + BLE.LINE_GAP + 'ms');
+      var step = function () {
+        if (!BLE._stressOn) return;
+        if (BLE.stats.lost > lost0) {
+          console.warn('★ ' + (i + 1) + '장째(누적 ' + (BLE.stats.sent - sent0) + '줄, ' +
+            ((Date.now() - t0) / 1000).toFixed(1) + 's)에서 끊김 — 이 페이스는 기기가 못 버팁니다. ' +
+            '더 큰 gap으로 다시: DOTPAD.BLE.stress(' + frames + ', ' + (BLE.LINE_GAP + 100) + ')');
+          BLE._stressOn = false; BLE.LINE_GAP = gap0;
+          return;
+        }
+        if (BLE.inflightTotal() > 0 || BLE.pendingRows != null) { setTimeout(step, 150); return; }
+        if (i >= frames) {
+          console.log('✓ 완주 — ' + frames + '장 / ' + (BLE.stats.sent - sent0) + '줄 / 완료 ' +
+            (BLE.stats.ack - ack0) + ' / ' + ((Date.now() - t0) / 1000).toFixed(1) + 's, LINE_GAP ' +
+            BLE.LINE_GAP + 'ms는 안전한 페이스입니다.');
+          BLE._stressOn = false; BLE.LINE_GAP = gap0;
+          return;
+        }
+        i++;
+        if (i % 5 === 0) console.log('… ' + i + '/' + frames + '장 (' + (BLE.stats.sent - sent0) + '줄, 완료 ' + (BLE.stats.ack - ack0) + ')');
+        BLE.push((i % 2 ? A : B).slice());
+        setTimeout(step, 60);
+      };
+      step();
+      return '진행 상황은 콘솔에 출력됩니다. 중단: DOTPAD.BLE._stressOn=false';
+    },
+
     disconnectAll: function () {
       BLE.userClosed = true;
       BLE.stopWatchdog();
+      BLE._stressOn = false;
       var list = BLE.devs.slice();
       BLE.devs = []; BLE.connected = false;
       list.forEach(function (e) { try { BLE.sdk.disconnect(e.dev); } catch (x) {} });

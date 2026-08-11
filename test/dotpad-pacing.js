@@ -113,9 +113,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // ── 7. BoardInfo 수신 → 전체 화면 재전송 (SDK가 준비 전 라인을 버리는 것 보상) ──
   const bi = await page.evaluate(async () => {
+    DOTPAD.BLE.LINE_GAP = 120;                         // 직전 끊김 테스트의 적응형 백오프 원복
     const before = window.__sim.log.length;
     window.__sim.fireMessage('BoardInfo', DOTPAD.BLE.devs[0].dev);
-    await new Promise(r => setTimeout(r, 1200));
+    await new Promise(r => setTimeout(r, 2400));
     const fresh = window.__sim.log.slice(before).filter(x => x.mode === 'GraphicMode');
     return new Set(fresh.map(x => x.lineId)).size;
   });
