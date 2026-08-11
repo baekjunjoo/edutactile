@@ -16,3 +16,6 @@ test/*.ebrl
 test/*.json
 test/*.brf
 !test/lib/
+
+# 가이드 빌드 산출물 (guide/build-guide.js로 재생성)
+guide/guide-ko.html

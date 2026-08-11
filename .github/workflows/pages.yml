@@ -27,11 +27,13 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: node build.js
+      - run: node guide/build-guide.js
       - name: Make Pages site
         run: |
           mkdir -p site
           cp dist/tactile-material-maker-ko.html site/index.html
           cp dist/tactile-material-maker.html site/en.html
+          cp guide/guide-ko.html site/guide-ko.html
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:

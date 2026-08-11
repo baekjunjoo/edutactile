@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>촉각 교육자료 제작 도구 — 사용 가이드</title>
+<style>
+  :root{ --ink:#1b1b1b; --sub:#666; --line:#ddd; --accent:#c2185b; --bg:#faf9f7; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:#fff; color:var(--ink);
+        font:16px/1.75 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif; }
+  .wrap{ max-width:860px; margin:0 auto; padding:48px 28px 96px; }
+  header{ border-bottom:3px solid var(--accent); padding-bottom:22px; margin-bottom:34px; }
+  header .kicker{ color:var(--accent); font-weight:700; letter-spacing:.08em; font-size:13px; }
+  h1{ font-size:31px; margin:.3em 0 .25em; letter-spacing:-.02em; }
+  header p{ color:var(--sub); margin:0; font-size:15px; }
+  h2{ font-size:21px; margin:52px 0 14px; padding-top:14px; border-top:1px solid var(--line); letter-spacing:-.01em; }
+  h2 .num{ display:inline-block; min-width:1.9em; color:var(--accent); }
+  h3{ font-size:16px; margin:26px 0 8px; }
+  p{ margin:0 0 12px; }
+  .lead{ font-size:17px; }
+  figure{ margin:18px 0 24px; }
+  figure img{ width:100%; display:block; border:1px solid var(--line); border-radius:6px; }
+  figcaption{ font-size:13px; color:var(--sub); margin-top:7px; }
+  .narrow img{ max-width:420px; }
+  .mid img{ max-width:620px; }
+  table{ border-collapse:collapse; width:100%; margin:16px 0 22px; font-size:14.5px; }
+  th,td{ border-bottom:1px solid var(--line); padding:9px 10px; text-align:left; vertical-align:top; }
+  th{ background:var(--bg); font-weight:700; white-space:nowrap; }
+  td:first-child{ white-space:nowrap; font-weight:600; }
+  .note{ background:var(--bg); border-left:4px solid var(--accent); padding:14px 18px; margin:20px 0; border-radius:0 6px 6px 0; }
+  .note > b:first-child{ display:block; margin-bottom:4px; }
+  kbd{ font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f2f2f2;
+       border:1px solid #ccc; border-bottom-width:2px; border-radius:4px; padding:3px 6px; }
+  .btn{ display:inline-block; border:1.5px solid var(--accent); color:var(--accent);
+        border-radius:8px; padding:1px 8px; font-size:14px; font-weight:600; white-space:nowrap; }
+  .btn.b{ border-color:#1565c0; color:#1565c0; }
+  .btn.g{ border-color:#2e7d32; color:#2e7d32; }
+  ol.steps{ counter-reset:s; list-style:none; padding:0; margin:18px 0; }
+  ol.steps>li{ counter-increment:s; position:relative; padding:0 0 14px 44px; }
+  ol.steps>li::before{ content:counter(s); position:absolute; left:0; top:1px; width:28px; height:28px;
+        border-radius:50%; background:var(--accent); color:#fff; font-size:14px; font-weight:700;
+        display:flex; align-items:center; justify-content:center; }
+  ol.steps>li b{ display:block; }
+  ul{ margin:0 0 14px; padding-left:1.25em; }
+  li{ margin-bottom:5px; }
+  footer{ margin-top:60px; border-top:1px solid var(--line); padding-top:18px; font-size:13px; color:var(--sub); }
+  a{ color:#1565c0; }
+  @media print{
+    .wrap{ max-width:none; padding:0 12mm; }
+    h2{ page-break-after:avoid; } figure,table,.note{ page-break-inside:avoid; }
+    body{ font-size:11.5pt; } h1{ font-size:22pt; } h2{ font-size:14pt; }
+    figure img{ max-height:142mm; width:auto; max-width:100%; margin:0 auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">EDUTACTILE · 사용 가이드</div>
+  <h1>촉각 교육자료 제작 도구</h1>
+  <p>점자를 몰라도, 시각장애 학생이 손으로 읽을 수 있는 촉각 자료를 몇 분 안에 만드는 도구입니다.<br>
+     이 문서는 화면 조작과 출력 방법만 다룹니다. 순서대로 따라 하면 됩니다.</p>
+</header>
+
+<p class="lead">템플릿을 고르고 → 숫자를 넣고 → 내보내면 끝입니다. 점자 번역, 선 굵기, 여백, 요소 간 최소 간격 같은
+촉각 자료의 규격(TGIL·BANA 기준)은 전부 자동으로 처리됩니다.</p>
+
+<figure>
+  <img src="IMG:g_guide-01-overview.jpg" alt="전체 화면 — 왼쪽 템플릿 목록, 가운데 미리보기, 오른쪽 옵션">
+  <figcaption>화면은 세 칸입니다. <b>왼쪽</b> 템플릿 목록 · <b>가운데</b> 미리보기(실제 출력물과 동일) · <b>오른쪽</b> 옵션과 내보내기.</figcaption>
+</figure>
+
+<h2><span class="num">1.</span>시작하기</h2>
+
+<p>설치가 필요 없습니다. HTML 파일 하나로 전부 동작하며, 인터넷이 끊겨도 그대로 쓸 수 있습니다.</p>
+
+<ul>
+  <li><b>웹으로 열기</b> — <a href="https://baekjunjoo.github.io/edutactile/">https://baekjunjoo.github.io/edutactile/</a></li>
+  <li><b>파일로 쓰기</b> — <code>tactile-material-maker-ko.html</code> 파일을 받아 더블클릭하면 브라우저에서 열립니다. USB로 전달해도 되고, 오프라인 교실에서도 동작합니다.</li>
+</ul>
+
+<div class="note">
+  <b>브라우저는 Chrome 또는 Edge를 쓰세요.</b>
+  만들고 인쇄하는 것은 어떤 브라우저에서도 되지만, <b>DotPad 연결(블루투스)</b>은 Chrome·Edge에서만 동작합니다.
+  화면 오른쪽 위에서 <b>한국어 UI / English UI</b>를 바꿀 수 있습니다.
+</div>
+
+<h2><span class="num">2.</span>템플릿 고르기</h2>
+
+<p>왼쪽 목록에서 분야를 누르면 아래로 펼쳐집니다. 카드를 누르는 순간 가운데 미리보기가 바뀝니다.
+전부 22종이며, 체육·수학·일상생활·과학·국어·문서변환·이미지 트레이싱으로 나뉩니다.</p>
+
+<figure class="narrow">
+  <img src="IMG:g_guide-02-gallery.jpg" alt="템플릿 목록 — 카테고리를 누르면 아래로 펼쳐진다">
+  <figcaption>분야 이름 옆 숫자는 그 안의 템플릿 개수입니다. 한 번 더 누르면 접힙니다.</figcaption>
+</figure>
+
+<h2><span class="num">3.</span>값 입력하기</h2>
+
+<p>오른쪽 <b>옵션</b>에서 제목과 항목을 바꿉니다. 입력하는 즉시 미리보기에 반영되며, 저장 버튼은 없습니다.</p>
+
+<p>그 아래 <b>치수 레이블</b>에서 숫자를 고칩니다. 맨 위 <b>단위(전체 일괄 적용)</b>를 바꾸면
+모든 치수가 자동으로 환산됩니다 — 78피트를 미터로 바꾸면 23.77미터로 바뀝니다.
+밀리미터·센티미터·미터·피트·인치를 지원하므로, 나라별 단위에 맞춰 그대로 쓰면 됩니다.</p>
+
+<figure class="mid">
+  <img src="IMG:g_guide-03-options.jpg" alt="옵션 패널 — 제목, 항목, 치수 레이블, 단위 선택">
+  <figcaption>단위를 한 번 바꾸면 도면의 모든 치수와 점자 레이블이 함께 바뀝니다. 오른쪽 <span class="btn">✕</span>는 그 치수를 지웁니다.</figcaption>
+</figure>
+
+<div class="note">
+  <b>도면 크기는 용지에 맞춰 자동 조정됩니다.</b>
+  손끝으로 읽는 자료는 실제 비율대로 축소하면 읽을 수 없기 때문에, 크기는 용지에 맞추고
+  <b>실제 수치는 점자 치수 레이블이 전달</b>합니다. 숫자를 바꿔도 그림 크기가 그대로인 것은 정상입니다.
+</div>
+
+<h2><span class="num">4.</span>미리보기에서 바로 고치기</h2>
+
+<p>미리보기의 글자를 <b>클릭하면 그 자리에서 바로 수정</b>됩니다. 창이 따로 뜨지 않습니다.
+제목·치수·레이블 모두 같은 방식이며, <kbd>Enter</kbd>를 누르거나 바깥을 클릭하면 확정됩니다.</p>
+
+<figure>
+  <img src="IMG:g_guide-04-crop.jpg" alt="미리보기에서 치수 78을 그 자리에서 수정하는 화면">
+  <figcaption>치수 "78"을 클릭한 모습. 오른쪽 패널의 해당 줄도 함께 표시되어, 어느 값을 고치는지 바로 보입니다.</figcaption>
+</figure>
+
+<h3>레이블과 치수 추가하기</h3>
+
+<table>
+  <tr><th>하고 싶은 것</th><th>방법</th></tr>
+  <tr><td>설명 붙이기</td><td><span class="btn">레이블 추가 (도면 클릭)</span>를 누르고, 도면에서 설명할 위치를 클릭한 뒤 문구를 입력합니다. 리드선이 자동으로 그려집니다.</td></tr>
+  <tr><td>길이 재기</td><td><span class="btn">치수 추가 (두 점 클릭)</span>를 누르고, 시작점과 끝점을 차례로 클릭합니다.</td></tr>
+  <tr><td>레이블 옮기기</td><td>레이블의 점을 드래그합니다.</td></tr>
+  <tr><td>레이블 지우기</td><td>레이블의 점을 더블클릭합니다. (오른쪽 목록의 <span class="btn">✕</span>도 같습니다.)</td></tr>
+</table>
+
+<h2><span class="num">5.</span>출력 옵션</h2>
+
+<table>
+  <tr><th>점자 코드</th><td>한국 점자(국내 수업용) · UEB Grade 2(영어권·TGIL 제출용) · Nemeth(미국 수학점자) 중에서 고릅니다. 고르는 즉시 도면의 점자가 다시 번역됩니다.</td></tr>
+  <tr><th>용지 크기</th><td>A4 가로·세로, B4 가로·세로, 11.5×11인치(미국 엠보서 표준).</td></tr>
+  <tr><th>묵자 병기</th><td>점자 옆에 일반 글자를 함께 넣을지 정합니다. <b>화면에만</b>은 점자를 모르는 선생님이 눈으로 확인하는 용도이고, <b>인쇄물에도 포함</b>은 눈으로 보는 사람과 손으로 읽는 학생이 한 장을 같이 쓸 때 씁니다.</td></tr>
+</table>
+
+<h3>여러 쪽짜리 수업 자료</h3>
+<p><span class="btn g">+ 페이지로 추가</span>를 누르면 지금 도면이 <b>레슨 시퀀스</b>에 한 쪽으로 쌓입니다.
+도면을 바꿔가며 계속 추가한 뒤 <b>시퀀스 생성</b>을 누르면 여러 쪽짜리 자료가 한 번에 만들어집니다.
+쪽마다 설명을 적어두면 DotPad에서 음성으로 읽힙니다.</p>
+
+<h2><span class="num">6.</span>내보내기</h2>
+
+<figure class="mid">
+  <img src="IMG:g_guide-05-exports.jpg" alt="내보내기 버튼 — SVG, PDF, DotPad .dtms, BRF, JSON">
+</figure>
+
+<table>
+  <tr><th>SVG</th><td>엠보서·Monarch용 벡터 파일. 실제 촉각 자료를 찍어낼 때 쓰는 기본 형식입니다.</td></tr>
+  <tr><th>PDF</th><td>종이 인쇄용. 스웰페이퍼(발포지)로 뽑을 때도 이 파일을 씁니다.</td></tr>
+  <tr><th>DotPad .dtms</th><td>DotPad 기기로 옮겨 담는 파일. 기기를 연결하지 않아도 미리 만들어 둘 수 있습니다.</td></tr>
+  <tr><th>BRF</th><td>점자 텍스트 파일. 도면의 제목·치수·레이블이 목록으로 정리되어, 도면을 읽기 전 예습용 "키 페이지"가 됩니다.</td></tr>
+  <tr><th>스펙 저장 (JSON)</th><td>지금 작업 상태를 파일로 저장합니다. <b>스펙 불러오기</b>로 다시 열어 이어서 작업하거나, 동료에게 넘길 수 있습니다.</td></tr>
+</table>
+
+<p><b>문서 변환기</b>(왼쪽 목록의 DOCUMENTS)를 고르면 내보내기에 두 가지가 더 나타납니다 —
+<b>Word (.docx)</b>와 <b>eBraille (.ebrl)</b>. 표 형식 규정집(PDF·Word)을 올리면 점자 설명 문서로 바꿔줍니다.</p>
+
+<div class="note">
+  <b>인쇄할 때 배율을 반드시 "실제 크기(100%)"로 맞추세요.</b>
+  "용지에 맞춤"으로 인쇄하면 점자가 미세하게 줄어들어 손으로 읽을 수 없게 됩니다. 이것이 가장 흔한 실수입니다.
+</div>
+
+<h2><span class="num">7.</span>DotPad 연결하기</h2>
+
+<p>DotPad 320이 있으면 만든 자료를 바로 기기에 띄워 확인할 수 있습니다.
+기기 전원을 켜고 <span class="btn b">DotPad 연결</span>을 누른 뒤, 목록에서 기기를 고르면 됩니다.
+버튼을 한 번 더 누르면 다른 DotPad에도 같은 화면을 보냅니다(최대 5대) — 수업에서 여러 학생이 동시에 만질 때 씁니다.</p>
+
+<figure class="mid">
+  <img src="IMG:g_ui-29-oneone.jpg" alt="DotPad 연결 상태 — 파란 테두리가 기기에 나오는 범위">
+  <figcaption>파란 테두리 안이 지금 기기에 나오는 범위입니다(60×40 핀). 점자 도트 하나가 핀 하나에 떨어지는 <b>1:1 실제 크기</b>로 시작합니다.</figcaption>
+</figure>
+
+<h3>기기 키</h3>
+<table>
+  <tr><th>F1 / F4</th><td>위로 / 아래로 이동</td></tr>
+  <tr><th>F2 / F3</th><td>왼쪽 / 오른쪽 이동</td></tr>
+  <tr><th>좌패닝 + F1</th><td>축소 (전체 모양 보기)</td></tr>
+  <tr><th>우패닝 + F4</th><td>확대 (1:1로 돌아오기)</td></tr>
+  <tr><th>패닝 키 단독</th><td>이전 / 다음 페이지</td></tr>
+</table>
+
+<div class="note">
+  <b>점자는 1:1에서만 읽힙니다.</b>
+  축소하면 핀 하나가 담당하는 크기가 점자 도트 간격(2.34mm)보다 커져 도트가 한 핀에 뭉칩니다.
+  이때는 화면에 <b>⚠ 점자 판독 불가</b> 경고가 뜹니다 — 축소는 전체 형태를 훑을 때만 쓰고, 읽을 때는 1:1로 돌아오세요.
+</div>
+
+<h2><span class="num">8.</span>막혔을 때</h2>
+
+<table>
+  <tr><th>DotPad 연결 버튼이 안 먹음</th><td>Chrome이나 Edge에서 열었는지 확인하세요. Safari·Firefox와 미리보기 창에서는 블루투스가 막혀 있습니다.</td></tr>
+  <tr><th>연결이 끊김</th><td>자동으로 다시 연결합니다. 그래도 안 되면 기기를 껐다 켜고 <span class="btn b">DotPad 연결</span>을 다시 누르세요.</td></tr>
+  <tr><th>숫자를 바꿔도 그림이 그대로</th><td>정상입니다. 크기는 용지에 맞춰 자동 조정되고, 실제 수치는 점자 치수 레이블이 전달합니다(3장 참고).</td></tr>
+  <tr><th>인쇄한 점자가 안 읽힘</th><td>인쇄 배율이 "실제 크기(100%)"인지 확인하세요.</td></tr>
+  <tr><th>작업을 이어서 하고 싶음</th><td><b>스펙 저장 (JSON)</b>으로 내려받고, 다음에 <b>스펙 불러오기</b>로 여세요.</td></tr>
+</table>
+
+<footer>
+  촉각 교육자료 제작 도구 (edutactile) · Team Dot<br>
+  이 문서는 브라우저에서 <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>P</kbd>로 PDF 저장할 수 있습니다.
+</footer>
+
+</div>
+</body>
+</html>
