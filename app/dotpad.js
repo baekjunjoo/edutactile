@@ -188,7 +188,7 @@
       }).then(function (d) {
         if (!d) throw new Error('scan cancelled');
         return BLE.sdk.connectBleDevice(d).then(function (dev) {
-          BLE.devs.push({ dev: dev || d, name: (d && d.name) || 'DotPad', ready: false, lastSent: [], lastText: null });
+          BLE.devs.push({ dev: dev || d, name: (d && d.name) || 'DotPad', ready: false, lastSent: [], lastText: null, queue: [], awaiting: null, tmoRun: 0 });
           // 전송은 onMessage 'Connected' 후에만 시작 (게이트) — 여기서 push하지 않는다
           return true;
         });
@@ -198,35 +198,59 @@
       });
     },
 
+    /* 블랙박스: 마지막 200개 이벤트 기록. 실기기 끊김을 추측이 아니라 데이터로 좁힌다.
+     * 끊긴 뒤 콘솔에서 DOTPAD.BLE.dumpTrace() — 마지막 순간에 무엇이 오갔는지 그대로 나온다. */
+    trace: [], TRACE_MAX: 200,
+    log: function (ev, d) {
+      BLE.trace.push({ t: Date.now(), ev: ev, d: d });
+      if (BLE.trace.length > BLE.TRACE_MAX) BLE.trace.shift();
+    },
+    dumpTrace: function () {
+      var t0 = BLE.trace.length ? BLE.trace[0].t : 0;
+      return BLE.trace.map(function (x) {
+        return ((x.t - t0) / 1000).toFixed(2) + 's ' + x.ev + (x.d != null ? ' ' + x.d : '');
+      }).join('\n');
+    },
+
     onMessage: function (dev, code) {
       var e = BLE.findDev(dev);
-      // 기기 완료 통지(패치된 SDK가 전달) = 역압 신호: 밀린 줄 수를 줄이고 다음 프레임을 연다
+      // 기기 완료 통지(패치된 SDK가 전달): 이 줄을 기기가 다 처리했다 → 다음 줄을 보낸다
       if (code === 'ResponseDisplayLineComplete' || code === 'ResponseDisplayLineAck' ||
           code === 'ResponseDisplayLineNonAck') {
         BLE.stats.ack++;
-        if (e && e.inflight > 0) e.inflight--;
-        if (BLE.pendingRows != null || BLE.pendingText != null) BLE.flushFrame();
+        BLE.log('done');
+        if (e) { e.gotComplete = true; e.awaiting = null; e.tmoRun = 0; BLE.drain(e); }
         return;
       }
-      if (code === 'CommandError') { BLE.errCount++; BLE.stats.err++; return; }
+      if (code === 'CommandError') { BLE.errCount++; BLE.stats.err++; BLE.log('cmd-error'); return; }
+      if (code === 'DeviceFWVersion' || code === 'DeviceHWVersion' || code === 'DeviceName' ||
+          code === 'BleMacAddress') { BLE.log('pong', code); return; }   // 유휴 핑 응답 = 링크 생존
       // 보드 정보 수신 = 디스플레이 준비 완료. 그 전에 보낸 줄은 기기가 버렸을 수 있어 다시 그린다.
       if (code === 'BoardInfo') {
-        if (e) { e.boardInfo = true; e.lastSent = []; e.lastText = null; e.inflight = 0; }
+        BLE.log('board-info');
+        if (e) { e.boardInfo = true; e.lastSent = []; e.lastText = null; e.queue = []; e.awaiting = null; }
         BLE.status({ connected: BLE.readyCount(), repaint: true });
         return;
       }
       if (code === 'Connected') {
+        BLE.log('connected');
         if (e) e.ready = true;
         else if (BLE.devs.length && !BLE.devs[BLE.devs.length - 1].ready) BLE.devs[BLE.devs.length - 1].ready = true;
         BLE.connected = true;
         BLE.retries = 0;
+        BLE.startWatchdog();
         BLE.status({ connected: BLE.readyCount() });
         BLE.flushFrame();
       } else if (code === 'Disconnected' || code === 'ConnectedFail') {
+        BLE.log(code === 'Disconnected' ? 'DISCONNECTED' : 'connect-fail');
         if (e) BLE.devs.splice(BLE.devs.indexOf(e), 1);
         BLE.connected = BLE.readyCount() > 0;
+        if (!BLE.connected) BLE.stopWatchdog();
         var lost = code === 'Disconnected' && !BLE.userClosed;
-        if (lost) BLE.stats.lost++;
+        if (lost) {
+          BLE.stats.lost++;
+          if (typeof console !== 'undefined') console.warn('[DotPad] 링크 끊김 — 직전 이벤트:\n' + BLE.dumpTrace().split('\n').slice(-25).join('\n'));
+        }
         BLE.status({ connected: BLE.readyCount(), lost: lost });
         if (lost && e && BLE.retries < BLE.MAX_RETRY) BLE.reconnect(e);   // 의도치 않은 끊김 → 자동 재연결
       }
@@ -241,7 +265,7 @@
         if (BLE.userClosed) return;
         try {
           BLE.sdk.connectBleDevice(entry.dev).then(function (dev) {
-            BLE.devs.push({ dev: dev || entry.dev, name: entry.name, ready: false, lastSent: [], lastText: null });
+            BLE.devs.push({ dev: dev || entry.dev, name: entry.name, ready: false, lastSent: [], lastText: null, queue: [], awaiting: null, tmoRun: 0 });
           }).catch(function () { BLE.status({ error: 'reconnect' }); });
         } catch (err) { BLE.status({ error: 'reconnect' }); }
       }, 800 * BLE.retries);
@@ -252,22 +276,27 @@
       if (BLE.onKeyNav) try { BLE.onKeyNav(key); } catch (e) {}
     },
 
-    /* ── 전송 (역압 기반 — 기기 완료 통지에 맞춰 보낸다) ──
-     * SDK의 sendCommand는 내부 상태머신이 라인 큐·ACK 대기·재시도를 처리하므로
-     * "바뀐 행을 연달아 호출하고 SDK에 맡기는" 사용법은 유지한다. 달라진 것은 프레임
-     * 사이의 간격: 시간이 아니라 기기가 실제로 소화했는지(inflight==0)로 연다.
-     *   - 보낸 줄마다 inflight++ · Complete 통지마다 inflight-- (패치된 SDK가 전달)
-     *   - inflight가 남아 있으면 다음 프레임을 보류 — 기기 명령 버퍼에 밀어넣지 않는다
-     *   - Complete가 안 오는 환경(무패치 폴백) 대비 STALL_MS 지나면 강제로 연다
-     * keep-alive는 제거: SDK가 같은 데이터를 걸러내서 전파를 타지도 않으면서(무의미),
-     * 매 초 sendCommand(true)를 흔들어 전송 중 restart만 유발하던 것이 끊김의 공범이었다.
-     * BLE 링크 유지는 링크 계층이 하는 일이라 앱 트래픽이 필요 없다. */
+    /* ── 전송 (한 줄씩, 기기 완료 통지에 맞춰 — 기기 속도가 곧 페이스) ──
+     * 이전 방식(바뀐 행 버스트)의 문제: displayLineData를 연달아 부르면 SDK의 restart
+     * 우회 때문에 기기 명령 큐에 최대 11줄이 쌓인다. 기기 완료(Complete)가 44인데
+     * 처리 대기 2가 남은 채 죽은 실측 — 기기가 핀을 올리는 도중 명령이 계속 밀려들면
+     * 펌웨어가 링크를 놓는다. 이제 Complete를 앱이 받으므로(SDK 패치 ②) 진짜 흐름제어가
+     * 가능하다:
+     *   - 프레임 diff를 기기별 queue에 담고, 한 줄 보내면 Complete(또는 타임아웃)까지 대기
+     *   - 기기 명령 큐 깊이가 항상 ≤1 — 밀어넣기가 원천적으로 불가능
+     *   - 새 프레임이 오면 남은 queue를 새 diff로 교체 (최신 화면만)
+     *   - 줄 무응답 LINE_TIMEOUT: 건너뛰고 진행, 연속 TMO_LIMIT회면 링크 사망으로 판정하고
+     *     30초 좀비(SDK 내부 재연결) 대신 즉시 강제 재연결
+     * keep-alive는 없다(무의미 + restart 유발). 대신 유휴 15초마다 펌웨어 버전을 묻는
+     * 저비용 핑으로 링크 생존만 확인한다 — 핀을 건드리지 않고, 전송 중에는 절대 안 보낸다. */
     errCount: 0, pendingRows: null, pendingText: null, _frameT: null,
     lastFrame: null,                       // 현재 화면 (재연결 후 다시 그리기의 진실 원본)
-    STALL_MS: 1500,
+    LINE_TIMEOUT: 1200, TMO_LIMIT: 3, PING_IDLE: 15000, SELF_CLOCK: 160,
     stats: { sent: 0, ka: 0, ack: 0, err: 0, lost: 0, reconn: 0 },
     inflightTotal: function () {
-      var n = 0; BLE.devs.forEach(function (e) { n += e.inflight || 0; }); return n;
+      var n = 0;
+      BLE.devs.forEach(function (e) { n += (e.queue ? e.queue.length : 0) + (e.awaiting ? 1 : 0); });
+      return n;
     },
 
     /* 완성 프레임 push (호출측이 마이크로배치로 감싼다). 최신 프레임만 유지. */
@@ -277,43 +306,96 @@
       BLE.flushFrame();
     },
 
+    /* 프레임 → 기기별 diff 계산 → queue 교체. 실제 전송은 drain이 한 줄씩. */
     flushFrame: function () {
       if (!BLE.connected || !BLE.sdkMod) return;
       if (BLE.pendingRows == null && BLE.pendingText == null) return;
       var now = Date.now();
-      var wait = BLE.MIN_INTERVAL * Math.max(1, BLE.devs.length) - (now - BLE.last);
-      // 역압: 기기가 직전 프레임을 아직 소화 중이면 보류 (Complete 통지가 flushFrame을 다시 부른다)
-      if (wait <= 0 && BLE.inflightTotal() > 0 && now - BLE.last < BLE.STALL_MS) wait = 120;
+      var wait = BLE.MIN_INTERVAL - (now - BLE.last);          // 프레임 계산 최소 간격 (연타 병합)
       if (wait > 0) {
         if (BLE._frameT == null) BLE._frameT = setTimeout(function () { BLE._frameT = null; BLE.flushFrame(); }, wait + 5);
-        return;                                                    // 그 사이 새 프레임이 오면 pending을 덮어쓴다
+        return;                                                // 그 사이 새 프레임이 오면 pending을 덮어쓴다
       }
       var rows = BLE.pendingRows, text = BLE.pendingText;
       BLE.pendingRows = null; BLE.pendingText = null;
-      BLE.last = Date.now();
-      var DM = BLE.sdkMod.DisplayMode;
+      BLE.last = now;
       BLE.devs.forEach(function (e) {
         if (!e.ready) return;
-        e.inflight = e.inflight || 0;
+        var q = [];
         if (rows) rows.forEach(function (hex, r) {
-          if (e.lastSent[r] === hex) return;                       // 행 차분: 바뀐 행만
-          e.lastSent[r] = hex;
-          BLE.stats.sent++; e.inflight++;
-          try { BLE.sdk.displayLineData(r + 1, 0, hex, DM.GraphicMode, e.dev); }
-          catch (err) { BLE.errCount++; BLE.stats.err++; e.lastSent[r] = null; e.inflight--; }
+          if (e.lastSent[r] !== hex) q.push({ line: r + 1, hex: hex, text: false });
         });
-        if (text != null && e.lastText !== text) {
-          e.lastText = text;
-          BLE.stats.sent++; e.inflight++;
-          try { BLE.sdk.displayLineData(0, 0, text, DM.TextMode, e.dev); }
-          catch (err) { BLE.errCount++; BLE.stats.err++; e.lastText = null; e.inflight--; }
+        if (text != null && e.lastText !== text) q.push({ line: 0, hex: text, text: true });
+        if (q.length) {
+          e.queue = q;                                         // 남은 옛 diff는 버린다 — 최신 화면만
+          BLE.log('frame', q.length + '줄');
+          BLE.drain(e);
         }
       });
       if (rows) BLE.lastFrame = rows;
     },
 
+    /* 한 줄 전송 → Complete 대기. 기기 명령 큐 깊이 ≤1 보장. */
+    drain: function (e) {
+      if (!e || !e.ready || e.awaiting || !e.queue || !e.queue.length) return;
+      var it = e.queue.shift();
+      var DM = BLE.sdkMod.DisplayMode;
+      e.awaiting = { t: Date.now(), it: it };
+      BLE.stats.sent++;
+      BLE.log('send', (it.text ? 'text' : 'L' + it.line));
+      try {
+        BLE.sdk.displayLineData(it.line, 0, it.hex, it.text ? DM.TextMode : DM.GraphicMode, e.dev);
+        if (it.text) e.lastText = it.hex; else e.lastSent[it.line - 1] = it.hex;
+      } catch (err) {
+        BLE.errCount++; BLE.stats.err++; e.awaiting = null;
+        BLE.log('send-error', err && err.message);
+        return;
+      }
+      // Complete를 한 번도 안 주는 SDK(무패치 폴백)면 자체 시계로 진행 — 타임아웃 누명을 씌우지 않는다
+      if (!e.gotComplete) {
+        var mine = e.awaiting;
+        setTimeout(function () {
+          if (e.awaiting === mine && !e.gotComplete) { e.awaiting = null; BLE.drain(e); }
+        }, BLE.SELF_CLOCK);
+      }
+    },
+
+    /* 감시: 줄 무응답이면 건너뛰고 진행, 연속 3회면 좀비 링크로 판정 → 즉시 강제 복구.
+     * 유휴가 길면 핀을 건드리지 않는 펌웨어 버전 핑으로 링크 생존을 확인한다. */
+    _wd: null, _lastPing: 0,
+    startWatchdog: function () {
+      if (BLE._wd) return;
+      BLE._wd = setInterval(function () {
+        if (!BLE.connected) return;
+        var now = Date.now();
+        BLE.devs.slice().forEach(function (e) {
+          if (!e.ready) return;
+          if (e.awaiting && now - e.awaiting.t > BLE.LINE_TIMEOUT) {
+            e.tmoRun = (e.tmoRun || 0) + 1;
+            BLE.stats.err++;
+            BLE.log('line-timeout', (e.awaiting.it.text ? 'text' : 'L' + e.awaiting.it.line) + ' #' + e.tmoRun);
+            e.awaiting = null;
+            if (e.tmoRun >= BLE.TMO_LIMIT) {                   // 좀비 링크 — SDK 내부 재연결(30초+)을 기다리지 않는다
+              BLE.log('force-recover');
+              e.tmoRun = 0; e.queue = [];
+              try { BLE.sdk.disconnect(e.dev); } catch (x) {}  // Disconnected 경로 → 자동 재연결
+            } else BLE.drain(e);
+          }
+          // 유휴 핑: 전송이 완전히 쉬고 있을 때만 (충돌 방지), 15초마다
+          if (!e.awaiting && (!e.queue || !e.queue.length) &&
+              now - BLE.last > BLE.PING_IDLE && now - BLE._lastPing > BLE.PING_IDLE) {
+            BLE._lastPing = now;
+            BLE.log('ping');
+            try { BLE.sdk.requestDeviceInfo(e.dev, 'FirmwareVersion'); } catch (x) {}
+          }
+        });
+      }, 400);
+    },
+    stopWatchdog: function () { if (BLE._wd) { clearInterval(BLE._wd); BLE._wd = null; } },
+
     disconnectAll: function () {
       BLE.userClosed = true;
+      BLE.stopWatchdog();
       var list = BLE.devs.slice();
       BLE.devs = []; BLE.connected = false;
       list.forEach(function (e) { try { BLE.sdk.disconnect(e.dev); } catch (x) {} });

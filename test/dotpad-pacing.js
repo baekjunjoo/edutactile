@@ -1,8 +1,8 @@
-/* 전송 계층 검증 — 역압(backpressure) 기반 페이싱
- * 핵심: 행은 버스트(SDK 내부가 큐·ACK 처리), 프레임은 200ms×기기수 스로틀 + 최신만.
- * 프레임 사이는 시간이 아니라 기기 Complete 통지(inflight==0)로 연다 — 기기가 직전
- * 프레임을 소화하기 전에는 다음 프레임을 밀어넣지 않는다(끊김의 근본 대책).
- * Complete가 안 오는 환경(무패치 폴백)은 STALL_MS 후 강제로 열린다. */
+/* 전송 계층 검증 — 한 줄씩, 기기 완료(Complete) 통지에 맞춰 (기기 속도가 곧 페이스)
+ * 핵심: 프레임 diff를 기기별 queue에 담고 한 줄 보내면 Complete까지 대기 — 기기 명령
+ * 큐 깊이가 항상 ≤1이라 밀어넣기가 원천 봉쇄된다(누적 수십 줄 뒤 끊김의 근본 대책).
+ * 새 프레임은 남은 queue를 교체(최신 화면만). 줄 무응답은 LINE_TIMEOUT 후 건너뛰고,
+ * 연속 3회면 좀비 링크로 판정해 즉시 강제 재연결한다. */
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('/home/claude/.npm-global/lib/node_modules/playwright');
@@ -43,7 +43,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const burst = g.filter(x => x.t - t0 < 100).length;   // 첫 프레임: 100ms 안에 여러 행
     return { total: g.length, burst };
   });
-  ok('rows within a frame go back-to-back (SDK-internal pacing)', first.burst >= 5, `첫 100ms 안 ${first.burst}행`);
+  ok('fast device: a frame drains quickly (Complete-paced)', first.burst >= 5, `첫 100ms 안 ${first.burst}행`);
 
   // ── 3. 키 연타 → 프레임 스로틀 + 최신 프레임만 (오래된 프레임 폐기) ──
   const flood = await page.evaluate(async () => {
@@ -62,25 +62,27 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok('stale frames dropped (bounded traffic)', flood.sent <= 45, `전송 ${flood.sent}행`);
   ok('all lines completed (inflight back to 0)', flood.inflight === 0, flood.inflight);
 
-  // ── 4. ★ 역압: 기기가 느리면(Complete 지연) 다음 프레임이 소화될 때까지 보류된다.
-  //        시간 냉각이 아니라 기기 속도 자체가 페이스가 된다 — 명령 버퍼에 쌓이지 않는다. ──
+  // ── 4. ★ 흐름제어: 한 줄 보내면 기기 완료(Complete)까지 대기 — 명령 큐 깊이 항상 ≤1.
+  //        기기가 느려도 밀어넣기가 원천 봉쇄되고, 새 프레임은 남은 줄들을 교체한다(최신만). ──
   const bp = await page.evaluate(async () => {
-    window.__sim.completeDelay = 700;                  // 느린 기기 흉내: 줄당 700ms 소화
+    window.__sim.completeDelay = 400;                  // 느린 기기 흉내: 줄당 400ms 소화
     const before = window.__sim.log.length;
     window.__key('LPF1');                              // 프레임 1: 축소 — 전 행 교체 (가장자리 클램프 무관)
-    await new Promise(r => setTimeout(r, 250));
-    window.__key('RPF4');                              // 프레임 2: 확대 — 소화 전이니 보류돼야 함
-    await new Promise(r => setTimeout(r, 300));
-    const midway = window.__sim.log.length - before;   // 이 시점: 프레임 1만 나가 있어야
+    await new Promise(r => setTimeout(r, 600));        // 키 디바운스(60)+프레임 스로틀 뒤 ~1줄 소화 시점
+    const early = window.__sim.log.length - before;    // 이 시점: 최대 2줄 (깊이 ≤1 증명)
     const inflightMid = DOTPAD.BLE.inflightTotal();
-    await new Promise(r => setTimeout(r, 2600));
+    window.__key('RPF4');                              // 프레임 2: 확대 — 남은 프레임1 줄들을 교체해야 함
+    await new Promise(r => setTimeout(r, 6000));
     const total = window.__sim.log.length - before;
     window.__sim.completeDelay = 8;
-    return { midway, inflightMid, total, inflight: DOTPAD.BLE.inflightTotal() };
+    const gaps = window.__sim.log.slice(before + 1).map((x, i) => x.t - window.__sim.log[before + i].t);
+    return { early, inflightMid, total, inflight: DOTPAD.BLE.inflightTotal(),
+             paced: gaps.filter(g => g >= 380).length, n: gaps.length };
   });
-  ok('slow device: frame 2 held while frame 1 in flight', bp.midway <= 12 && bp.inflightMid > 0,
-    `550ms 시점 ${bp.midway}행 / inflight ${bp.inflightMid}`);
-  ok('held frame sent after device drains (nothing lost)', bp.total >= 13 && bp.inflight === 0,
+  ok('slow device: command queue depth stays ≤1 (no pile-up)', bp.early <= 2 && bp.inflightMid > 0,
+    `600ms 시점 ${bp.early}행 / inflight ${bp.inflightMid}`);
+  ok('lines paced by device Complete (~400ms each)', bp.paced >= bp.n - 2, `${bp.paced}/${bp.n} 간격 ≥380ms`);
+  ok('stale frame-1 lines replaced by frame 2, queue drains', bp.total <= 14 && bp.inflight === 0,
     `최종 ${bp.total}행 / inflight ${bp.inflight}`);
 
   // ── 5. 대기 상태 = 완전한 무전송 (keep-alive 제거 — restart 유발로 끊김의 공범이었다) ──

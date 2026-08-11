@@ -22,6 +22,7 @@ class DotPadSDK {
   }
   displayLineData(lineId, startCell, hex, mode, dev) {
     (window.__sent = window.__sent || []).push({ lineId, startCell, hex, mode });
+    /*COMPLETE*/
   }
   disconnect(d) { setTimeout(() => this._m && this._m(d, 'Disconnected'), 10); }
 }
@@ -30,7 +31,10 @@ const DisplayMode = { GraphicMode: 'GraphicMode', TextMode: 'TextMode' };`;
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dpsdk-'));
 const ESM_SDK = path.join(tmp, 'DotPadSDK-3.0.0.js');
 const UMD_SDK = path.join(tmp, 'DotPadSDK-umd.js');
-fs.writeFileSync(ESM_SDK, CORE + '\nexport { DotPadSDK, DotPadScanner, DisplayMode };\n');
+/* ESM판은 완료 통지를 주고(패치된 공식 SDK와 동일), UMD판은 안 준다(무패치 폴백) —
+   완료 통지가 없어도 SELF_CLOCK 자체 시계로 전송이 굴러가는지까지 확인한다. */
+const WITH_COMPLETE = "setTimeout(() => this._m && this._m(dev, 'ResponseDisplayLineComplete'), 5);";
+fs.writeFileSync(ESM_SDK, CORE.replace('/*COMPLETE*/', WITH_COMPLETE) + '\nexport { DotPadSDK, DotPadScanner, DisplayMode };\n');
 fs.writeFileSync(UMD_SDK, CORE + '\nwindow.DotPadSDK = DotPadSDK; window.DotPadScanner = DotPadScanner; window.DisplayMode = DisplayMode;\n');
 
 (async () => {
@@ -77,7 +81,7 @@ fs.writeFileSync(UMD_SDK, CORE + '\nwindow.DotPadSDK = DotPadSDK; window.DotPadS
     const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 8000 }), page.click('#dpBtn')]);
     await chooser.setFiles(sdkPath);
     await page.waitForFunction(() => window.DOTPAD && DOTPAD.BLE.readyCount() === 1, null, { timeout: 8000 });
-    await sleep(1400);
+    await sleep(2600);                       // UMD(완료 통지 없음)는 자체 시계 160ms/줄 → 11줄 ≈ 1.8s
     const st = await page.evaluate(() => ({
       sent: (window.__sent || []).filter(x => x.mode === 'GraphicMode').length,
       btn: document.querySelector('#dpBtn').textContent
