@@ -83,8 +83,9 @@
         ['setTimeout(this.refreshItem,', 'this.refreshTimer=setTimeout(this.refreshItem,', true],
         // ①-b clearTimeout은 함수가 아니라 타이머 id에
         ['clearTimeout(this.refreshItem)', 'clearTimeout(this.refreshTimer)', true],
-        // ①-c LIVE 리프레시 3회 → 1회 (정지 후 화면 보강은 1회면 충분)
-        ['liveRefresh(){this.refreshCount<3?', 'liveRefresh(){this.refreshCount<1?', false],
+        // ①-c LIVE 리프레시 완전 차단 (0회) — 정지 후 전체 줄을 다시 구동하는 보강 라운드가
+        //      연속 핀 구동 부하를 배로 만든다 (실기기: 이전 프레임+보강+새 프레임 연속 구동 중 침묵)
+        ['liveRefresh(){this.refreshCount<3?', 'liveRefresh(){this.refreshCount<0?', false],
         // ② Complete를 앱 콜백에도 전달 (역압용)
         ['case DataCodes.ResponseDisplayLineComplete:this.#k.setDotCommandSendReady(!0);break;',
          'case DataCodes.ResponseDisplayLineComplete:this.#k.setDotCommandSendReady(!0),this.#s(this,e,t);break;', false]
@@ -188,7 +189,8 @@
       }).then(function (d) {
         if (!d) throw new Error('scan cancelled');
         return BLE.sdk.connectBleDevice(d).then(function (dev) {
-          BLE.devs.push({ dev: dev || d, name: (d && d.name) || 'DotPad', ready: false, lastSent: [], lastText: null, queue: [], awaiting: null, tmoRun: 0 });
+          // dev = SDK의 DotDevice (display 호출용) · d = 브라우저 BluetoothDevice (재연결용) — 둘 다 보관
+          BLE.devs.push({ dev: dev || d, bt: d, name: (d && d.name) || 'DotPad', ready: false, lastSent: [], lastText: null, queue: [], awaiting: null, tmoRun: 0 });
           // 전송은 onMessage 'Connected' 후에만 시작 (게이트) — 여기서 push하지 않는다
           return true;
         });
@@ -219,7 +221,7 @@
           code === 'ResponseDisplayLineNonAck') {
         BLE.stats.ack++;
         BLE.log('done');
-        if (e) { e.gotComplete = true; e.awaiting = null; e.tmoRun = 0; BLE.drain(e); }
+        if (e) { e.gotComplete = true; e.awaiting = null; e.tmoRun = 0; e.lastDone = Date.now(); BLE.drain(e); }
         return;
       }
       if (code === 'CommandError') { BLE.errCount++; BLE.stats.err++; BLE.log('cmd-error'); return; }
@@ -256,19 +258,33 @@
       }
     },
 
-    /* 자동 재연결: 저장된 기기 객체로 재시도 (스캔 창 없이). 실패해도 조용히 포기하고 안내만. */
-    retries: 0, MAX_RETRY: 2,
+    /* 자동 재연결: 반드시 "브라우저 BluetoothDevice"로 재시도 (스캔 창 없이).
+     * SDK의 connectBleDevice는 dev.gatt.connect()를 부르므로 DotDevice를 넘기면
+     * "reading 'connect'" 예외로 즉사한다 — 실기기 로그로 확인된 버그.
+     * 기기 펌웨어가 재광고를 시작할 시간이 필요해 1·2·3·4초 백오프로 4회 시도. */
+    retries: 0, MAX_RETRY: 4,
     reconnect: function (entry) {
       BLE.retries++; BLE.stats.reconn++;
+      BLE.log('reconnect', '#' + BLE.retries);
       BLE.status({ reconnecting: BLE.retries });
       setTimeout(function () {
         if (BLE.userClosed) return;
+        var bt = entry.bt || (entry.dev && entry.dev.connectDevice) || entry.dev;
         try {
-          BLE.sdk.connectBleDevice(entry.dev).then(function (dev) {
-            BLE.devs.push({ dev: dev || entry.dev, name: entry.name, ready: false, lastSent: [], lastText: null, queue: [], awaiting: null, tmoRun: 0 });
-          }).catch(function () { BLE.status({ error: 'reconnect' }); });
-        } catch (err) { BLE.status({ error: 'reconnect' }); }
-      }, 800 * BLE.retries);
+          BLE.sdk.connectBleDevice(bt).then(function (dev) {
+            if (!dev) throw new Error('busy');
+            BLE.devs.push({ dev: dev, bt: bt, name: entry.name, ready: false, lastSent: [], lastText: null, queue: [], awaiting: null, tmoRun: 0 });
+          }).catch(function () {
+            BLE.log('reconnect-fail', '#' + BLE.retries);
+            if (BLE.retries < BLE.MAX_RETRY) BLE.reconnect(entry);
+            else BLE.status({ error: 'reconnect' });
+          });
+        } catch (err) {
+          BLE.log('reconnect-fail', err && err.message);
+          if (BLE.retries < BLE.MAX_RETRY) BLE.reconnect(entry);
+          else BLE.status({ error: 'reconnect' });
+        }
+      }, 1000 * BLE.retries);
     },
 
     onKey: function (dev, key) {
@@ -292,6 +308,7 @@
     errCount: 0, pendingRows: null, pendingText: null, _frameT: null,
     lastFrame: null,                       // 현재 화면 (재연결 후 다시 그리기의 진실 원본)
     LINE_TIMEOUT: 1200, TMO_LIMIT: 3, PING_IDLE: 15000, SELF_CLOCK: 160,
+    LINE_GAP: 120, GAP_ROWS: 6,   // 전 행 교체급 프레임은 줄 사이 쉼표 — 연속 핀 구동으로 기기가 침묵하는 것 방지
     stats: { sent: 0, ka: 0, ack: 0, err: 0, lost: 0, reconn: 0 },
     inflightTotal: function () {
       var n = 0;
@@ -328,16 +345,25 @@
         if (text != null && e.lastText !== text) q.push({ line: 0, hex: text, text: true });
         if (q.length) {
           e.queue = q;                                         // 남은 옛 diff는 버린다 — 최신 화면만
-          BLE.log('frame', q.length + '줄');
+          e.gap = q.length >= BLE.GAP_ROWS ? BLE.LINE_GAP : 0; // 무거운 프레임만 줄 사이 쉼표
+          BLE.log('frame', q.length + '줄' + (e.gap ? ' (쉼표 ' + e.gap + 'ms)' : ''));
           BLE.drain(e);
         }
       });
       if (rows) BLE.lastFrame = rows;
     },
 
-    /* 한 줄 전송 → Complete 대기. 기기 명령 큐 깊이 ≤1 보장. */
+    /* 한 줄 전송 → Complete 대기. 기기 명령 큐 깊이 ≤1 보장.
+     * 무거운 프레임은 완료 후 LINE_GAP만큼 쉬었다 다음 줄 — 핀 구동에 숨 쉴 틈을 준다. */
     drain: function (e) {
       if (!e || !e.ready || e.awaiting || !e.queue || !e.queue.length) return;
+      if (e.gap) {
+        var now = Date.now(), since = now - (e.lastDone || 0);
+        if (since < e.gap) {
+          if (!e._gapT) e._gapT = setTimeout(function () { e._gapT = null; BLE.drain(e); }, e.gap - since + 5);
+          return;
+        }
+      }
       var it = e.queue.shift();
       var DM = BLE.sdkMod.DisplayMode;
       e.awaiting = { t: Date.now(), it: it };

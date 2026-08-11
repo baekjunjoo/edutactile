@@ -57,7 +57,7 @@ function harness(mod) {
   ok('4/4 patches applied to the real SDK source', DOTPAD.BLE.sdkPatches === 4, DOTPAD.BLE.sdkPatches);
   ok('refresh timer id is stored (cancellable)', patched.includes('this.refreshTimer=setTimeout(this.refreshItem,'));
   ok('clearTimeout targets the id, not the function', !patched.includes('clearTimeout(this.refreshItem)'));
-  ok('LIVE refresh reduced 3 → 1 round', patched.includes('liveRefresh(){this.refreshCount<1?'));
+  ok('LIVE refresh disabled (0 rounds)', patched.includes('liveRefresh(){this.refreshCount<0?'));
   ok('Complete forwarded to app callback (backpressure)',
     patched.includes('setDotCommandSendReady(!0),this.#s(this,e,t);break;'));
 
@@ -82,14 +82,14 @@ function harness(mod) {
   const fghost = fix.writes.length - fsent0;
   ok('patched SDK: cancelled refresh stays cancelled (no ghost traffic)', fghost === 0, `${fghost}줄`);
 
-  // ── 4. 패치본: 정지 후 보강 리프레시는 1회만 — 유한하게 끝난다 ──
+  // ── 4. 패치본: 정지 후에도 보강 리프레시 없음 — 프레임 그 자체로 끝 (핀 재구동 금지) ──
   const one = harness(await loadSdk(patched, 'patched2'));
   one.frame('AA');
   await sleep(6500);                                      // 아무도 건드리지 않고 방치
   const total = one.writes.length;
-  const after4s = one.writes.filter(w => w.t - one.writes[0].t > 4000).length;
-  ok('patched SDK: one reinforcement round then silence (10+10 lines, bounded)',
-    total >= 19 && total <= 22 && after4s === 0, `총 ${total}줄, 4초 이후 ${after4s}줄`);
+  const after1s = one.writes.filter(w => w.t - one.writes[0].t > 1000).length;
+  ok('patched SDK: frame only, no reinforcement re-actuation (10 lines, then silence)',
+    total === 10 && after1s === 0, `총 ${total}줄, 1초 이후 ${after1s}줄`);
 
   // ── 5. 패치본: 연속 프레임 — 이전 프레임의 리프레시가 다음 프레임에 눌려 폭주하지 않는다 ──
   const nav = harness(await loadSdk(patched, 'patched3'));
@@ -99,8 +99,8 @@ function harness(mod) {
   nav.frame('88');                                        // 팬 연타 흉내: 4프레임 연속
   await sleep(6500);
   const navTotal = nav.writes.length;
-  ok('patched SDK: 4 rapid frames → ≤ frames+1 refresh round (was frames×4 before)',
-    navTotal <= 52, `총 ${navTotal}줄 (원본이라면 ~160줄)`);
+  ok('patched SDK: 4 rapid frames → exactly 4 frames of traffic (was frames×4 before)',
+    navTotal <= 42, `총 ${navTotal}줄 (원본이라면 ~160줄)`);
 
   console.log(`\n결과: ${pass} 통과 / ${fail} 실패`);
   process.exit(fail ? 1 : 0);

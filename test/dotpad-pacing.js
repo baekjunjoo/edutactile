@@ -30,20 +30,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   await page.click('#dpBtn');
   await page.waitForFunction(() => DOTPAD.BLE.readyCount() === 1);
-  await sleep(1600);
+  await sleep(2600);                                       // 초기 프레임: 10줄 × (완료+쉼표 120ms) ≈ 1.4s
 
   // ── 1. 기본 간격 계약값 ──
   const iv = await page.evaluate(() => DOTPAD.BLE.MIN_INTERVAL);
   ok('frame throttle is 200ms (contract value)', iv === 200, iv);
 
-  // ── 2. 프레임 안의 행들은 버스트 — 검증 패턴 (SDK 내부가 페이싱) ──
+  // ── 2. 무거운 프레임(전 행 교체)은 줄 사이 LINE_GAP 쉼표 — 연속 핀 구동 방지 ──
   const first = await page.evaluate(() => {
     const g = window.__sim.log.filter(x => x.mode === 'GraphicMode');
-    const t0 = g.length ? g[0].t : 0;
-    const burst = g.filter(x => x.t - t0 < 100).length;   // 첫 프레임: 100ms 안에 여러 행
-    return { total: g.length, burst };
+    const gaps = g.slice(1).map((x, i) => x.t - g[i].t);
+    return { total: g.length, gap: DOTPAD.BLE.LINE_GAP,
+             rested: gaps.filter(x => x >= DOTPAD.BLE.LINE_GAP - 30).length, n: gaps.length };
   });
-  ok('fast device: a frame drains quickly (Complete-paced)', first.burst >= 5, `첫 100ms 안 ${first.burst}행`);
+  ok('full frame delivered line-by-line', first.total >= 10, `${first.total}행`);
+  ok('heavy frame rests LINE_GAP between lines (no continuous actuation)',
+    first.rested >= first.n - 1, `${first.rested}/${first.n} 간격 ≥${first.gap - 30}ms`);
 
   // ── 3. 키 연타 → 프레임 스로틀 + 최신 프레임만 (오래된 프레임 폐기) ──
   const flood = await page.evaluate(async () => {
@@ -52,13 +54,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       window.__key(i % 2 ? 'KeyFunction4' : 'KeyFunction2');
       await new Promise(r => setTimeout(r, 30));
     }
-    await new Promise(r => setTimeout(r, 2500));
+    await new Promise(r => setTimeout(r, 3500));
     const log = window.__sim.log.slice(before).filter(x => x.mode === 'GraphicMode');
-    let f = 0, lastT = -1e9;
-    log.forEach(x => { if (x.t - lastT > 120) f++; lastT = x.t; });
-    return { sent: log.length, frames: f, inflight: DOTPAD.BLE.inflightTotal() };
+    const frames = DOTPAD.BLE.trace.filter(x => x.ev === 'frame').length;
+    return { sent: log.length, frames, inflight: DOTPAD.BLE.inflightTotal() };
   });
-  ok('12 rapid keys collapse to a few throttled frames', flood.frames <= 6, `프레임 ${flood.frames}개`);
+  ok('12 rapid keys collapse to a few coalesced frames', flood.frames <= 8, `프레임 ${flood.frames}개`);
   ok('stale frames dropped (bounded traffic)', flood.sent <= 45, `전송 ${flood.sent}행`);
   ok('all lines completed (inflight back to 0)', flood.inflight === 0, flood.inflight);
 
