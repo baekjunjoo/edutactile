@@ -31,6 +31,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:#8a8378;mar
 #dimForm{display:flex;flex-direction:column;gap:8px}
 .hint{font-size:11.5px;color:#9a917f;line-height:1.5;padding:2px 2px 0}
 #preview{position:relative;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;box-shadow:0 2px 10px rgba(0,0,0,.05);overflow:hidden}
+#preview.dropping{outline:3px dashed #1565c0;outline-offset:-8px;background:#f3f7ff}
 /* DotPad 기기 화면 범위 (연결 시) */
 #dpVp{position:absolute;display:none;pointer-events:none;border:2px solid #2b5db8;border-radius:3px;
   background:rgba(43,93,184,.07);box-shadow:0 0 0 9999px rgba(255,255,255,.45);
@@ -104,13 +105,16 @@ summary{cursor:pointer;font-size:13px;color:#8a8378}
       <input id="labelInput" type="text" autocomplete="off">
       <select id="unitSel"><option value="">—</option><option value="mm">mm</option><option value="cm" selected>cm</option><option value="m">m</option><option value="ft">ft</option><option value="in">in</option></select>
     </span>
-    <h2 id="h-report"></h2>
-    <ul id="report"></ul>
-    <details>
-      <summary id="h-advanced"></summary>
-      <textarea id="json" spellcheck="false"></textarea>
-      <button id="applyJson"></button>
-    </details>
+    <!-- 내부 상태 저장·자동화 검증용 — 화면에는 표시하지 않는다 -->
+    <div id="devPanel" style="display:none" aria-hidden="true">
+      <h2 id="h-report"></h2>
+      <ul id="report"></ul>
+      <details>
+        <summary id="h-advanced"></summary>
+        <textarea id="json" spellcheck="false"></textarea>
+        <button id="applyJson"></button>
+      </details>
+    </div>
   </section>
   <aside id="rightcol">
     <h2 id="h-options"></h2>

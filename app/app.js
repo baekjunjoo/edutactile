@@ -62,7 +62,8 @@
       printTip: 'When printing: set scale to "Actual size (100%)" — braille size must not shrink.',
       loaded: 'Loaded spec file — template options are disabled; labels & exports still work.',
       rbUpload: 'Rulebook JSON', rbSample: 'Load built-in sample (Arabic, 709 symbols)',
-      rbLoaded: 'Loaded: ', rbHint: 'Upload a table-format rulebook (PDF, Word, or verified JSON) → UEB-style narrative document. Braille is selectable text (embedded font). For HWP files: open in Hangul → Save As → Word (.docx), then upload.',
+      rbLoaded: 'Loaded: ', rbHint: 'Drag a table-format rulebook here (PDF, Word, or verified JSON) — or use the file picker on the right. → UEB-style narrative document with selectable braille text (embedded font). For HWP files: open in Hangul → Save As → Word (.docx) first.',
+      rbDropType: 'Only .pdf, .docx, or .json files can be converted.',
       docx: 'Word (.docx)',
       ebrl: 'eBraille (.ebrl)',
       dpBtn: 'Connect DotPad', dpConnected: 'DotPad ● {n}',
@@ -104,7 +105,8 @@
       printTip: '인쇄할 때 배율을 "실제 크기(100%)"로 설정하세요 — 점자 크기는 줄어들면 안 됩니다.',
       loaded: '스펙 파일을 불러왔습니다 — 템플릿 옵션은 비활성, 레이블·내보내기는 그대로 사용 가능.',
       rbUpload: '규정집 JSON', rbSample: '내장 샘플 불러오기 (아랍어 709 기호)',
-      rbLoaded: '불러옴: ', rbHint: '표 형식 규정집(PDF·Word·검증된 JSON) → UEB 스타일 서술형 문서. 점자는 선택·복사 가능한 텍스트(폰트 내장). hwp는 한글에서 "다른 이름으로 저장 → Word(.docx)" 후 업로드하세요.',
+      rbLoaded: '불러옴: ', rbHint: '표 형식 규정집(PDF·Word·검증된 JSON)을 여기에 끌어다 놓으세요 — 오른쪽 파일 선택으로도 됩니다. → UEB 스타일 서술형 문서로 변환되며, 점자는 선택·복사 가능한 텍스트입니다(폰트 내장). hwp는 한글에서 "다른 이름으로 저장 → Word(.docx)" 후 올리세요.',
+      rbDropType: 'PDF·Word(.docx)·JSON 파일만 변환할 수 있습니다.',
       docx: 'Word (.docx)',
       ebrl: 'eBraille (.ebrl)',
       dpBtn: 'DotPad 연결', dpConnected: 'DotPad ● {n}대',
@@ -177,6 +179,27 @@
     $('#preview').addEventListener('click', onPreviewClick);
     $('#preview').addEventListener('dblclick', onPreviewDblClick);
     $('#preview').addEventListener('mousedown', onDragStart);
+    // 문서 변환기: 미리보기에 파일을 끌어다 놓으면 바로 변환 (PDF·Word·JSON)
+    ['dragover', 'dragenter'].forEach(function (ev) {
+      $('#preview').addEventListener(ev, function (e) {
+        if (state.tpl !== RULEBOOK_TPL) return;
+        e.preventDefault(); e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy';
+        $('#preview').classList.add('dropping');
+      });
+    });
+    ['dragleave', 'dragend'].forEach(function (ev) {
+      $('#preview').addEventListener(ev, function () { $('#preview').classList.remove('dropping'); });
+    });
+    $('#preview').addEventListener('drop', function (e) {
+      if (state.tpl !== RULEBOOK_TPL) return;
+      e.preventDefault(); e.stopPropagation();
+      $('#preview').classList.remove('dropping');
+      var f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f) return;
+      if (!/\.(json|pdf|docx)$/i.test(f.name)) { alert(t('rbDropType')); return; }
+      rbHandleFile(f);
+    });
     window.addEventListener('mousemove', onDragMove);
     window.addEventListener('mouseup', onDragEnd);
     window.addEventListener('resize', function () { dpOverlay(); });
@@ -684,17 +707,7 @@
       var rf = document.createElement('input'); rf.type = 'file';
       rf.accept = '.json,.pdf,.docx,application/json,application/pdf';
       rf.addEventListener('change', function (ev) {
-        var file = ev.target.files[0]; if (!file) return;
-        var lower = file.name.toLowerCase();
-        state.rbFixes = {}; state.rbFixId = null;
-        if (lower.endsWith('.pdf')) return loadRbPdf(file);
-        if (lower.endsWith('.docx')) return loadRbDocx(file);
-        var fr = new FileReader();
-        fr.onload = function () {
-          try { state.rbData = JSON.parse(fr.result); state.rbName = file.name; state.rbParseReport = null; update(); }
-          catch (e) { alert('JSON error: ' + e.message); }
-        };
-        fr.readAsText(file);
+        if (ev.target.files[0]) rbHandleFile(ev.target.files[0]);
       });
       ru.appendChild(rf); f.appendChild(ru);
       if (typeof window !== 'undefined' && window.RB_SAMPLE) {
@@ -799,6 +812,20 @@
   }
 
   /* PDF → 텍스트 아이템(x,y,w) → 파서 (파싱은 베타: 리포트로 검토 유도) */
+  /* 규정집 파일 공통 처리 — 파일 선택 창과 미리보기 드래그&드롭이 같은 경로를 쓴다 */
+  function rbHandleFile(file) {
+    var lower = file.name.toLowerCase();
+    state.rbFixes = {}; state.rbFixId = null;
+    if (lower.endsWith('.pdf')) return loadRbPdf(file);
+    if (lower.endsWith('.docx')) return loadRbDocx(file);
+    var fr = new FileReader();
+    fr.onload = function () {
+      try { state.rbData = JSON.parse(fr.result); state.rbName = file.name; state.rbParseReport = null; update(); }
+      catch (e) { alert('JSON error: ' + e.message); }
+    };
+    fr.readAsText(file);
+  }
+
   function loadRbPdf(file) {
     var fr = new FileReader();
     fr.onload = function () {
