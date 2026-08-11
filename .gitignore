@@ -19,3 +19,4 @@ test/*.brf
 
 # 가이드 빌드 산출물 (guide/build-guide.js로 재생성)
 guide/guide-ko.html
+guide/guide-en.html

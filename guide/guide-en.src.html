@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tactile Learning Material Maker — Quick Guide</title>
+<style>
+  :root{ --ink:#1b1b1b; --sub:#666; --line:#ddd; --accent:#c2185b; --bg:#faf9f7; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:#fff; color:var(--ink);
+        font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  .wrap{ max-width:860px; margin:0 auto; padding:48px 28px 96px; }
+  header{ border-bottom:3px solid var(--accent); padding-bottom:22px; margin-bottom:34px; }
+  header .kicker{ color:var(--accent); font-weight:700; letter-spacing:.08em; font-size:13px; }
+  h1{ font-size:31px; margin:.3em 0 .25em; letter-spacing:-.02em; }
+  header p{ color:var(--sub); margin:0; font-size:15px; }
+  h2{ font-size:21px; margin:52px 0 14px; padding-top:14px; border-top:1px solid var(--line); letter-spacing:-.01em; }
+  h2 .num{ display:inline-block; min-width:1.9em; color:var(--accent); }
+  h3{ font-size:16px; margin:26px 0 8px; }
+  p{ margin:0 0 12px; }
+  .lead{ font-size:17px; }
+  figure{ margin:18px 0 24px; }
+  figure img{ width:100%; display:block; border:1px solid var(--line); border-radius:6px; }
+  figcaption{ font-size:13px; color:var(--sub); margin-top:7px; }
+  .narrow img{ max-width:420px; }
+  .mid img{ max-width:620px; }
+  table{ border-collapse:collapse; width:100%; margin:16px 0 22px; font-size:14.5px; }
+  th,td{ border-bottom:1px solid var(--line); padding:9px 10px; text-align:left; vertical-align:top; }
+  th{ background:var(--bg); font-weight:700; white-space:nowrap; }
+  td:first-child{ font-weight:600; }
+  .note{ background:var(--bg); border-left:4px solid var(--accent); padding:14px 18px; margin:20px 0; border-radius:0 6px 6px 0; }
+  .note > b:first-child{ display:block; margin-bottom:4px; }
+  kbd{ font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f2f2f2;
+       border:1px solid #ccc; border-bottom-width:2px; border-radius:4px; padding:3px 6px; }
+  .btn{ display:inline-block; border:1.5px solid var(--accent); color:var(--accent);
+        border-radius:8px; padding:1px 8px; font-size:14px; font-weight:600; white-space:nowrap; }
+  .btn.b{ border-color:#1565c0; color:#1565c0; }
+  .btn.g{ border-color:#2e7d32; color:#2e7d32; }
+  ul{ margin:0 0 14px; padding-left:1.25em; }
+  li{ margin-bottom:5px; }
+  footer{ margin-top:60px; border-top:1px solid var(--line); padding-top:18px; font-size:13px; color:var(--sub); }
+  a{ color:#1565c0; }
+  @media print{
+    .wrap{ max-width:none; padding:0 12mm; }
+    h2{ page-break-after:avoid; } figure,table,.note{ page-break-inside:avoid; }
+    body{ font-size:11.5pt; } h1{ font-size:22pt; } h2{ font-size:14pt; }
+    figure img{ max-height:142mm; width:auto; max-width:100%; margin:0 auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">EDUTACTILE · QUICK GUIDE</div>
+  <h1>Tactile Learning Material Maker</h1>
+  <p>Produce tactile diagrams a blind learner can read by touch — without knowing braille.<br>
+     This guide covers only what you click and how you export. Follow it top to bottom.</p>
+</header>
+
+<p class="lead">Pick a template → type your numbers → export. Braille translation, line weights, margins and the
+minimum spacing between tactile elements are handled for you, following TGIL and BANA guidelines.</p>
+
+<figure>
+  <img src="IMG:ge_01-overview.jpg" alt="Full screen — templates on the left, preview in the middle, options on the right">
+  <figcaption>Three columns: <b>left</b> templates · <b>centre</b> preview (identical to what gets printed) · <b>right</b> options and export.</figcaption>
+</figure>
+
+<h2><span class="num">1.</span>Getting started</h2>
+
+<p>Nothing to install. The whole tool is one HTML file, and it keeps working with no internet connection.</p>
+
+<ul>
+  <li><b>On the web</b> — <a href="https://baekjunjoo.github.io/edutactile/en.html">https://baekjunjoo.github.io/edutactile/en.html</a></li>
+  <li><b>As a file</b> — download <code>tactile-material-maker.html</code> and double-click it. You can hand it around on a USB stick; it runs in a classroom with no network.</li>
+</ul>
+
+<div class="note">
+  <b>Use Chrome or Edge.</b>
+  Building and printing work in any browser, but <b>connecting a DotPad over Bluetooth</b> only works in Chrome and Edge.
+  Top right of the screen switches between <b>English UI</b> and <b>한국어 UI</b>.
+</div>
+
+<h2><span class="num">2.</span>Pick a template</h2>
+
+<p>Click a subject on the left and it expands. Clicking a card redraws the preview immediately.
+There are 22 templates across physical education, mathematics, daily living, science, language arts,
+document conversion and image tracing.</p>
+
+<figure class="narrow">
+  <img src="IMG:ge_02-gallery.jpg" alt="Template list — click a category to expand it">
+  <figcaption>The number next to a subject is how many templates it holds. Click again to collapse.</figcaption>
+</figure>
+
+<h2><span class="num">3.</span>Enter your values</h2>
+
+<p>Use <b>Options</b> on the right to set the title and the template's own settings. Everything updates as you type —
+there is no save button.</p>
+
+<p>Below that, <b>Dimension labels</b> holds the numbers. Change <b>Unit (applies to all)</b> at the top and every
+measurement converts at once — 78 feet becomes 23.77 m. Millimetres, centimetres, metres, feet and inches are
+supported, so you can work in whatever unit the country expects.</p>
+
+<figure class="mid">
+  <img src="IMG:ge_03-options.jpg" alt="Options panel — title, settings, dimension labels, unit selector">
+  <figcaption>One unit change rewrites every measurement on the diagram, braille included. The <span class="btn">✕</span> on the right removes that measurement.</figcaption>
+</figure>
+
+<div class="note">
+  <b>The drawing is scaled to fit the page, on purpose.</b>
+  A tactile diagram reduced to true scale becomes unreadable under the fingers, so the shape is fitted to the paper and
+  <b>the real measurements are carried by the braille dimension labels</b>. If you change a number and the drawing stays
+  the same size, that is correct behaviour.
+</div>
+
+<h2><span class="num">4.</span>Edit directly on the preview</h2>
+
+<p>Click any text on the diagram and <b>you edit it in place</b> — no pop-up window. Titles, dimensions and labels all
+behave the same way. Press <kbd>Enter</kbd> or click elsewhere to commit.</p>
+
+<figure>
+  <img src="IMG:ge_04-inline.jpg" alt="Editing the dimension 78 in place on the preview">
+  <figcaption>The dimension "78" clicked open. The matching row in the right-hand panel highlights, so you always know which value you are changing.</figcaption>
+</figure>
+
+<h3>Adding labels and measurements</h3>
+
+<table>
+  <tr><th>You want to</th><th>Do this</th></tr>
+  <tr><td>Describe a part</td><td>Press <span class="btn">Add label (click diagram)</span>, click the spot on the diagram, then type the wording. The lead line is drawn for you.</td></tr>
+  <tr><td>Measure a distance</td><td>Press <span class="btn">Add measurement (click 2 points)</span>, then click the start and end points.</td></tr>
+  <tr><td>Move a label</td><td>Drag its dot.</td></tr>
+  <tr><td>Delete a label</td><td>Double-click its dot, or use <span class="btn">✕</span> in the list on the right.</td></tr>
+</table>
+
+<h2><span class="num">5.</span>Output settings</h2>
+
+<table>
+  <tr><th>Braille code</th><td>UEB Grade 2 (English, TGIL submissions), Nemeth (US math braille), or Korean Braille. Switching re-translates the diagram instantly.</td></tr>
+  <tr><th>Paper size</th><td>11.5×11 in (US braille standard), A4 portrait and landscape, B4 portrait and landscape.</td></tr>
+  <tr><th>Print text alongside braille</th><td>Whether sighted-readable text sits next to the braille. <b>Screen only</b> lets a teacher who does not read braille check the work; <b>Include in print</b> is for a single sheet shared by a sighted adult and a braille-reading student.</td></tr>
+</table>
+
+<h3>Multi-page lessons</h3>
+<p><span class="btn g">+ Add as page</span> pushes the current diagram onto the <b>Lesson sequence</b> as one page.
+Keep changing the diagram and adding pages, then press <b>Generate sequence</b> to build the whole set at once.
+A description typed on a page is spoken aloud on the DotPad.</p>
+
+<h2><span class="num">6.</span>Export</h2>
+
+<figure class="mid">
+  <img src="IMG:ge_05-exports.jpg" alt="Export buttons — SVG, PDF, DotPad .dtms, BRF, JSON">
+</figure>
+
+<table>
+  <tr><th>SVG</th><td>Vector file for embossers and the Monarch. This is the normal path to a physical tactile sheet.</td></tr>
+  <tr><th>PDF</th><td>For paper printing, including swell (capsule) paper.</td></tr>
+  <tr><th>DotPad .dtms</th><td>Loads onto a DotPad device. You can prepare these without a device connected.</td></tr>
+  <tr><th>BRF key page</th><td>Braille text file listing the diagram's title, measurements and labels — a key page the student can read before exploring the diagram itself.</td></tr>
+  <tr><th>Save spec JSON</th><td>Saves the current work as a file. <b>Open spec JSON</b> brings it back to carry on, or to hand to a colleague.</td></tr>
+</table>
+
+<p>Choosing <b>Documents</b> in the template list adds two more exports — <b>Word (.docx)</b> and <b>eBraille (.ebrl)</b>.
+Upload a table-format rulebook (PDF or Word) and it becomes a narrative braille reference document.</p>
+
+<div class="note">
+  <b>Always print at "Actual size (100%)".</b>
+  Printing with "Fit to page" shrinks the braille slightly and makes it unreadable by touch. This is the single most
+  common mistake.
+</div>
+
+<h2><span class="num">7.</span>Connecting a DotPad</h2>
+
+<p>With a DotPad 320 you can feel the material immediately. Turn the device on, press
+<span class="btn b">Connect DotPad</span> and choose it from the list. Pressing the button again mirrors the same
+content to another DotPad — up to five, so a whole group can follow along.</p>
+
+<figure class="mid">
+  <img src="IMG:ge_06-dotpad.jpg" alt="DotPad connected — the blue frame shows what the device displays">
+  <figcaption>The blue frame is what the device is showing right now (60×40 pins). It starts at <b>1:1 actual size</b>, where one braille dot lands on exactly one pin.</figcaption>
+</figure>
+
+<h3>Device keys</h3>
+<table>
+  <tr><th>F1 / F4</th><td>Move up / down</td></tr>
+  <tr><th>F2 / F3</th><td>Move left / right</td></tr>
+  <tr><th>Left pan + F1</th><td>Zoom out (see the whole shape)</td></tr>
+  <tr><th>Right pan + F4</th><td>Zoom in (back to 1:1)</td></tr>
+  <tr><th>Pan keys alone</th><td>Previous / next page</td></tr>
+</table>
+
+<div class="note">
+  <b>Braille is only readable at 1:1.</b>
+  Zoom out and one pin has to cover more than the 2.34 mm braille dot spacing, so dots merge into a single pin.
+  The screen shows a <b>⚠ braille unreadable</b> warning when this happens — use zoom-out for orientation only, then
+  return to 1:1 to read.
+</div>
+
+<h2><span class="num">8.</span>If something goes wrong</h2>
+
+<table>
+  <tr><th>Connect DotPad does nothing</th><td>Check you opened the tool in Chrome or Edge. Safari, Firefox and embedded preview panes block Bluetooth.</td></tr>
+  <tr><th>The device drops out</th><td>It reconnects on its own. If it does not, power-cycle the device and press <span class="btn b">Connect DotPad</span> again.</td></tr>
+  <tr><th>Changing a number does not resize the drawing</th><td>Expected — the shape is fitted to the page and the real values are carried by the braille dimension labels (see section 3).</td></tr>
+  <tr><th>Printed braille cannot be read</th><td>Check the print scale is "Actual size (100%)".</td></tr>
+  <tr><th>You want to continue later</th><td>Use <b>Save spec JSON</b>, then <b>Open spec JSON</b> next time.</td></tr>
+</table>
+
+<footer>
+  Tactile Learning Material Maker (edutactile) · Team Dot<br>
+  Press <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>P</kbd> in your browser to save this guide as a PDF.
+</footer>
+
+</div>
+</body>
+</html>
