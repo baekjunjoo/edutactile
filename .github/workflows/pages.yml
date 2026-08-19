@@ -28,6 +28,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: node build.js
       - run: node guide/build-guide.js
+      - run: node convert/build.js
       - name: Make Pages site
         run: |
           mkdir -p site
@@ -35,6 +36,7 @@ jobs:
           cp dist/tactile-material-maker.html site/en.html
           cp guide/guide-ko.html site/guide-ko.html
           cp guide/guide-en.html site/guide-en.html
+          cp convert/dist/dot-convert.html site/convert.html
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
